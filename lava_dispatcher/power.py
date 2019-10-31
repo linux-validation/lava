@@ -27,6 +27,7 @@ import traceback
 from lava_common.exceptions import InfrastructureError, JobError, TestError
 from lava_common.constants import REBOOT_COMMAND_LIST
 from lava_dispatcher.action import Action, Pipeline
+from lava_dispatcher.utils.pdudaemon import pdudaemon_reboot, pdudaemon_off
 
 # pylint: disable=missing-docstring
 
@@ -50,6 +51,36 @@ class ResetDevice(Action):
             self.internal_pipeline.add_action(PDUReboot())
         else:
             self.internal_pipeline.add_action(SendRebootCommands())
+
+
+class PDUDaemonReboot(Action):
+    """
+    Issues the PDU power cycle command to a PDUDaemon server
+    """
+
+    name = "pdudaemon-request"
+    description = "make a PDUDaemon API request to power cycle a device"
+    summary = "PDUDaemon reboot request"
+    timeout_exception = InfrastructureError
+    command_exception = InfrastructureError
+
+    def __init__(self):
+        super().__init__()
+        self.command = None
+
+    def run(self, connection, max_end_time):
+        connection = super().run(connection, max_end_time)
+        if not self.job.device.pdudaemon_host:
+            raise InfrastructureError("pdudaemon_host not set.")
+        pdud_host = self.job.device.pdudaemon_host
+        result = pdudaemon_reboot(pdud_host, self.job.device)
+        if result:
+            self.results = {"status": "success"}
+        else:
+            raise InfrastructureError(
+                "PDUdaemon request failed: {}".format(result.content)
+            )
+        return connection
 
 
 class SendRebootCommands(Action):

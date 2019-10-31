@@ -441,6 +441,8 @@ class Command(LAVADaemonCommand):
         device = job.actual_device
         worker = device.worker_host
 
+        job_ctx["lava_device_name"] = device
+
         # TODO: check that device_cfg is not None!
         device_cfg = device.load_configuration(job_ctx)
 

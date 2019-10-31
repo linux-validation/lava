@@ -1,3 +1,7 @@
+{# Base LAVA internal context #}
+lava:
+  device_name: {% lava_device_name %}
+
 {# Base Kernel options #}
 {% set base_kernel_args = '' %}
 {% set base_extra_nfsroot_args = extra_nfsroot_args | default('') %}
