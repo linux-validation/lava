@@ -89,7 +89,11 @@ class LxcAddStaticDevices(Action):
         """
         usb_devices = []
         for device in self.job.device.get("static_info", []):
-            if "board_id" in device or "fs_label" in device:
+            if (
+                ("_connection" in device and device.get("_connection").lower() == "usb")
+                or "board_id" in device
+                or "fs_label" in device
+            ):
                 # This is a USB device
                 usb_devices.append(device)
         return usb_devices
@@ -106,12 +110,10 @@ class LxcAddStaticDevices(Action):
                 if (
                     usb_device.get("board_id", "") in ["", "0000000000"]
                     and requires_board_id
+                ) and (
+                    usb_device.get("_connection", "") != "usb" and requires_board_id
                 ):
-                    self.errors = "[LXC_STATIC] board_id unset"
-                if usb_device.get("usb_vendor_id", "") == "0000":
-                    self.errors = "[LXC_STATIC] usb_vendor_id unset"
-                if usb_device.get("usb_product_id", "") == "0000":
-                    self.errors = "[LXC_STATIC] usb_product_id unset"
+                    self.errors = "[LXC_STATIC] board_id or _connection unset"
         except TypeError:
             self.errors = "Invalid parameters for %s" % self.name
 
@@ -121,10 +123,14 @@ class LxcAddStaticDevices(Action):
             action="lxc-create-action", label="lxc", key="name"
         )
         # If there are no USB devices under static_info then this action should be idempotent.
-        if not self.get_usb_devices():
+        _usb_devices = self.get_usb_devices()  # call get_usb_devices only once
+        if not _usb_devices:
             return connection
         device_list = get_udev_devices(
-            job=self.job, logger=self.logger, device_info=self.get_usb_devices()
+            job=self.job,
+            logger=self.logger,
+            device_info=_usb_devices,
+            include_net_devices=True,
         )
         for link in device_list:
             lxc_cmd = ["lxc-device", "-n", lxc_name, "add", link]

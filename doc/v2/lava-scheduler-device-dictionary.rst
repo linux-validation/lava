@@ -50,11 +50,13 @@ Commands
   device is reset, using a ``udev`` rule.
 
 * **static_info** - a list of dictionaries, where each dictionary value can
-  contain keys such as 'board_id', 'usb_vendor_id', 'usb_product_id', which
-  will be added to the LXC for device specific tasks when the LXC is started.
-  Used for static devices which are always visible to the dispatcher, for
-  example the ARM Energy Probe which has a USB connection to the dispatcher
-  and probe connections to the device.
+  contain keys such udev variable names 'ID_SERIAL_SHORT', 'ID_VENDOR_ID',
+  'ID_PRODUCT_ID', which will be added to the LXC for device specific tasks
+  when the LXC is started. Used for static devices which are always visible
+  to the dispatcher, for example the ARM Energy Probe which has a USB connection
+  to the dispatcher and probe connections to the device. Each USB device need
+  to contain special '_connection' key with value 'usb'. This way LAVA can
+  differentiate between USB and other devices.
 
 * **adb_serial_number** - value to pass to ADB to connect to this device.
 
@@ -170,15 +172,16 @@ lists will be unrolled, for example:
 
 .. code-block:: jinja
 
-   {% set static_info = [{"board_id": "S_NO81730000"}, {"board_id": "S_NO81730001"}] %}
+   {% set static_info = [{"ID_SERIAL_SHORT": "S_NO81730000", "_connection": "usb"},
+   {"ID_SERIAL_SHORT": "S_NO81730001", "_connection": "usb"}] %}
    {% set storage_info = [{'SATA': '/dev/disk/by-id/ata-ST500DM002-1BD142_W3T79GCW'}] %}
 
 will become:
 
 .. code-block:: shell
 
-   export LAVA_STATIC_INFO_0_board_id='S_NO81730000'
-   export LAVA_STATIC_INFO_1_board_id='S_NO81730001'
+   export LAVA_STATIC_INFO_0_ID_SERIAL_SHORT='S_NO81730000'
+   export LAVA_STATIC_INFO_1_ID_SERIAL_SHORT='S_NO81730001'
    export LAVA_STORAGE_INFO_0_SATA='/dev/disk/by-id/ata-ST500DM002-1BD142_W3T79GCW'
 
 The environment can be **overridden in the job definition**. See

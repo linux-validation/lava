@@ -193,6 +193,9 @@ def _dict_compare(d1, d2):
 
 
 def match(device, match_dict, devicepath):
+    # filter out _key from match_dict (e.g. _connection=usb )
+    match_dict = {k: v for k, v in match_dict.items() if not k.startswith("_")}
+
     same = _dict_compare(dict(device), match_dict)
     if same == set(match_dict.keys()):
         if devicepath:
@@ -276,12 +279,23 @@ def wait_udev_changed_event(
             return
 
 
-def get_udev_devices(job=None, logger=None, device_info=None, required=False):
+def get_udev_devices(
+    job=None, logger=None, device_info=None, required=False, include_net_devices=False
+):
     """
-    Get udev device nodes based on serial, vendor and product ID
+    Get udev device nodes based on udev attributes
     All subsystems are allowed so that additional hardware like
     tty devices can be added to the LXC. The ID to match is controlled
     by the lab admin.
+    For backward compatibility the following mapping is added:
+     * board_id -> ID_SERIAL_SHORT
+     * usb_vendor_id -> ID_VENDOR_ID
+     * usb_product_id -> ID_MODEL_ID
+     * fs_label -> ID_FS_LABEL
+    This allows to keep the currently used device dictionaries.
+    It is advised to change the device dictionaries to use new matching
+    keys as the old keys (board_id, usb_vendor_id, usb_product_id, fs_label)
+    will be removed in future releases.
     """
     context = pyudev.Context()
     device_paths = set()
@@ -293,84 +307,49 @@ def get_udev_devices(job=None, logger=None, device_info=None, required=False):
         devices = device_info
     if not devices:
         return []
-    added = set()
+    missing = devices.copy()  # don't modify original list
     for usb_device in devices:
-        board_id = str(usb_device.get("board_id", ""))
-        usb_vendor_id = str(usb_device.get("usb_vendor_id", ""))
-        usb_product_id = str(usb_device.get("usb_product_id", ""))
-        usb_fs_label = str(usb_device.get("fs_label", ""))
-        # check if device is already connected
-        # try with all parameters such as board id, usb_vendor_id and
-        # usb_product_id
+        # this section is for backward compatibility
+        # it might be removed when lowercase parameters (board_id, usb_vendor_id, etc)
+        # are no longer supported.
+        if usb_device.get("board_id", False):
+            usb_device["ID_SERIAL_SHORT"] = usb_device.pop("board_id")
+        if usb_device.get("usb_vendor_id", False):
+            usb_device["ID_VENDOR_ID"] = usb_device.pop("usb_vendor_id")
+        if usb_device.get("usb_product_id", False):
+            usb_device["ID_MODEL_ID"] = usb_device.pop("usb_product_id")
+        if usb_device.get("fs_label", False):
+            usb_device["ID_FS_LABEL"] = usb_device.pop("fs_label")
+
+        match_found = False
         for device in context.list_devices():
-            if board_id and usb_vendor_id and usb_product_id:
-                if (
-                    (device.get("ID_SERIAL_SHORT") == board_id)
-                    and (device.get("ID_VENDOR_ID") == usb_vendor_id)
-                    and (device.get("ID_MODEL_ID") == usb_product_id)
-                ):
-                    device_paths.add(device.device_node)
-                    added.add(board_id)
-                    for child in device.children:
-                        if child.device_node:
-                            device_paths.add(child.device_node)
-                    for link in device.device_links:
-                        device_paths.add(link)
-            elif board_id and usb_vendor_id and not usb_product_id:
-                # try with parameters such as board id, usb_vendor_id
-                if (device.get("ID_SERIAL_SHORT") == board_id) and (
-                    device.get("ID_VENDOR_ID") == usb_vendor_id
-                ):
-                    device_paths.add(device.device_node)
-                    added.add(board_id)
-                    for child in device.children:
-                        if child.device_node:
-                            device_paths.add(child.device_node)
-                    for link in device.device_links:
-                        device_paths.add(link)
-            elif board_id and not usb_vendor_id and not usb_product_id:
-                # try with board id alone
-                if device.get("ID_SERIAL_SHORT") == board_id:
-                    device_paths.add(device.device_node)
-                    added.add(board_id)
-                    for child in device.children:
-                        if child.device_node:
-                            device_paths.add(child.device_node)
-                    for link in device.device_links:
-                        device_paths.add(link)
-            elif usb_vendor_id and usb_product_id:
-                # try with vendor and product id
-                if (
-                    device.get("ID_VENDOR_ID") == usb_vendor_id
-                    and device.get("ID_MODEL_ID") == usb_product_id
-                ):
-                    device_paths.add(device.device_node)
-                    added.add(usb_product_id)
-                    for child in device.children:
-                        if child.device_node:
-                            device_paths.add(child.device_node)
-                    for link in device.device_links:
-                        device_paths.add(link)
-            elif usb_fs_label:
-                # Just restrict by filesystem label.
-                if device.get("ID_FS_LABEL") == usb_fs_label:
-                    device_paths.add(device.device_node)
-                    added.add(usb_fs_label)
-                    for child in device.children:
-                        if child.device_node:
-                            device_paths.add(child.device_node)
-                    for link in device.device_links:
-                        device_paths.add(link)
-    if device_info and required:
-        for static_device in device_info:
-            for _, value in static_device.items():
-                if value not in added:
+            if match(device, usb_device, None):
+                if match_found:
                     raise InfrastructureError(
-                        "Unable to add all static devices: board_id '%s' was not found"
-                        % value
+                        "More than one device matches: %s" % usb_device
                     )
+                device_string = device.device_node
+                if device_string is None:
+                    if device.subsystem == "net" and include_net_devices:
+                        device_string = device.sys_name
+                    else:
+                        raise InfrastructureError(
+                            "Cannot add %s: no device node" % device.sys_path
+                        )
+                missing.remove(usb_device)
+                device_paths.add(device_string)
+                for child in device.children:
+                    if child.device_node:
+                        device_paths.add(child.device_node)
+                for link in device.device_links:
+                    device_paths.add(link)
+                match_found = True
     if logger and device_paths:
         logger.debug("Adding %s", ", ".join(device_paths))
+    if missing and required:
+        raise InfrastructureError(
+            "Unable to add all static device(s). Missing: %s" % missing
+        )
     return list(device_paths)
 
 

@@ -45,8 +45,9 @@ class LxcFactory(Factory):
     def create_adb_nuc_job(self, filename):
         return self.create_job("adb-nuc-01.jinja2", filename)
 
-    def create_hikey_aep_job(self, filename):
-        job = super().create_job("hi6220-hikey-r2-01.jinja2", filename)
+    def create_hikey_aep_job(self, device_file, filename):
+        # TODO: need to have first argument here as a passable variable
+        job = super().create_job(device_file, filename)
         job.logger = DummyLogger()
         return job
 
@@ -243,8 +244,10 @@ class TestLxcWithDevices(StdoutTestCase):
         self.assertIsNotNone(runner.testdef_levels)
 
     @unittest.skipIf(infrastructure_error("lxc-start"), "lxc-start not installed")
-    def test_lxc_with_static_device(self):
-        self.job = self.factory.create_hikey_aep_job("sample_jobs/hi6220-hikey.yaml")
+    def test_lxc_with_static_device_deprecated(self):
+        self.job = self.factory.create_hikey_aep_job(
+            "hi6220-hikey-r2-01.jinja2", "sample_jobs/hi6220-hikey.yaml"
+        )
         self.job.validate()
         lxc_boot = [
             action for action in self.job.pipeline.actions if action.name == "lxc-boot"
@@ -261,6 +264,32 @@ class TestLxcWithDevices(StdoutTestCase):
             self.assertIsInstance(board, dict)
             self.assertIn("board_id", board)
             self.assertEqual(board["board_id"], "S_N0123456")
+        description_ref = self.pipeline_reference("hi6220-hikey.yaml", job=self.job)
+        self.assertEqual(description_ref, self.job.pipeline.describe(False))
+
+    @unittest.skipIf(infrastructure_error("lxc-start"), "lxc-start not installed")
+    def test_lxc_with_static_device(self):
+        self.job = self.factory.create_hikey_aep_job(
+            "hi6220-hikey-r2-02.jinja2", "sample_jobs/hi6220-hikey.yaml"
+        )
+        self.job.validate()
+        lxc_boot = [
+            action for action in self.job.pipeline.actions if action.name == "lxc-boot"
+        ][0]
+        lxc_static = [
+            action
+            for action in lxc_boot.pipeline.actions
+            if action.name == "lxc-add-static"
+        ][0]
+        self.assertIsNotNone(lxc_static)
+        self.assertIsInstance(self.job.device.get("static_info"), list)
+        self.assertEqual(len(self.job.device.get("static_info")), 1)
+        for board in self.job.device.get("static_info"):
+            self.assertIsInstance(board, dict)
+            self.assertIn("ID_SERIAL_SHORT", board)
+            self.assertIn("_connection", board)
+            self.assertEqual(board["ID_SERIAL_SHORT"], "S/NO62200001")
+            self.assertEqual(board["_connection"], "usb")
         description_ref = self.pipeline_reference("hi6220-hikey.yaml", job=self.job)
         self.assertEqual(description_ref, self.job.pipeline.describe(False))
 
