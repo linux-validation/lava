@@ -80,6 +80,18 @@ def schema():
                     **common,
                 },
             )
-        ]
+        ],
+        Optional("reset_shell_para"): {
+            Optional("max_log_lines_per_minute"): int,
+            Optional("exception_patterns"): [str],
+            Optional("case_reboot_indications"): [str],
+            Optional("case_default_timeout"): int,
+            Optional("runner_recover_retry"): int,
+            Optional("heartbeat"): {Required("interval"): int, Required("retry"): int},
+            Optional("overlay_pre_cmd"): {
+                Optional("pre_cmd_for_non_reset_flag"): [str],
+                Optional("pre_cmd_for_reset_flag"): [str],
+            },
+        },
     }
     return {**test.schema(), **base}
