@@ -95,10 +95,6 @@ urlpatterns = [
         update_table_length_setting,
         name="lava.update_table_length_setting",
     ),
-    url(
-        r"^{mount_point}accounts/".format(mount_point=settings.MOUNT_POINT),
-        include("django.contrib.auth.urls"),
-    ),
     url(r"^admin/jsi18n", JavaScriptCatalog.as_view()),
     url(
         r"^{mount_point}admin/".format(mount_point=settings.MOUNT_POINT),
@@ -140,3 +136,18 @@ if settings.USE_DEBUG_TOOLBAR:
     import debug_toolbar
 
     urlpatterns.append(url(r"^__debug__/", include(debug_toolbar.urls)))
+
+if settings.AUTH_GITLAB_SERVER_URI:
+    urlpatterns.append(
+        url(
+            r"^{mount_point}accounts/".format(mount_point=settings.MOUNT_POINT),
+            include("allauth.urls"),
+        )
+    )
+
+urlpatterns.append(
+    url(
+        r"^{mount_point}accounts/".format(mount_point=settings.MOUNT_POINT),
+        include("django.contrib.auth.urls"),
+    )
+)

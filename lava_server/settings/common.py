@@ -68,6 +68,10 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.sites",  # FIXME: should not be needed anymore
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.gitlab",
 ]
 
 # List of people who get broken link notifications
@@ -103,6 +107,7 @@ TEMPLATES = [
                 # LAVA context processors
                 "lava_server.context_processors.lava",
                 "lava_server.context_processors.ldap_available",
+                "lava_server.context_processors.gitlab_available",
             ]
         },
     }
@@ -207,6 +212,10 @@ AUTH_LDAP_USER_SEARCH = None
 AUTH_LDAP_GROUP_SEARCH = None
 AUTH_LDAP_GROUP_TYPE = None
 
+# gitlab support
+GITLAB_URL = None
+SCOPE = None
+
 # Debian SSO is of be default
 AUTH_DEBIAN_SSO = None
 
@@ -293,6 +302,7 @@ def update(values):
     AUTH_LDAP_GROUP_TYPE = values.get("AUTH_LDAP_GROUP_TYPE")
     AUTH_LDAP_SERVER_URI = values.get("AUTH_LDAP_SERVER_URI")
     AUTH_LDAP_USER_SEARCH = values.get("AUTH_LDAP_USER_SEARCH")
+    AUTH_GITLAB_SERVER_URI = values.get("AUTH_GITLAB_SERVER_URI")
     AUTH_DEBIAN_SSO = values.get("AUTH_DEBIAN_SSO")
     AUTHENTICATION_BACKENDS = values.get("AUTHENTICATION_BACKENDS")
     DISALLOWED_USER_AGENTS = values.get("DISALLOWED_USER_AGENTS")
@@ -322,6 +332,16 @@ def update(values):
     # and https://docs.djangoproject.com/en/1.9/ref/settings/#admins
     ADMINS = [tuple(v) for v in ADMINS]
     MANAGERS = [tuple(v) for v in MANAGERS]
+
+    # gitlab authentication config
+    if AUTH_GITLAB_SERVER_URI:
+
+        AUTHENTICATION_BACKENDS.append(
+            "allauth.account.auth_backends.AuthenticationBackend"
+        )
+        SOCIALACCOUNT_PROVIDERS = {
+            "gitlab": {"GITLAB_URL": AUTH_GITLAB_SERVER_URI, "SCOPE": ["read_user"]}
+        }
 
     # LDAP authentication config
     if AUTH_LDAP_SERVER_URI:

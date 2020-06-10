@@ -46,3 +46,12 @@ def ldap_available(request):
     )
     login_message_ldap = getattr(settings, "LOGIN_MESSAGE_LDAP", "")
     return {"ldap_available": ldap_enabled, "login_message_ldap": login_message_ldap}
+
+
+def gitlab_available(request):
+    gitlab_enabled = "allauth.account.auth_backends" in settings.AUTHENTICATION_BACKENDS
+    login_message_gitlab = getattr(settings, "LOGIN_MESSAGE_GITLAB", "")
+    return {
+        "gitlab_available": gitlab_enabled,
+        "login_message_gitlab": login_message_gitlab,
+    }
