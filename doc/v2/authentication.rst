@@ -16,12 +16,65 @@ tested and supported authentication methods for LAVA.
 
 .. note:: LAVA used to include support for OpenID authentication (prior to
    version 2016.8), but this support had to be **removed** when incompatible
-   changes in Django (version 1.8) caused it to break.
+   changes in Django (version 1.8) caused it to break. The new openid support for Gitlab is introuduced using `Django Allauth`_ plugin.
+
+.. _`Django Allauth`: https://django-allauth.readthedocs.io/en/latest/overview.html
+
 
 Local Django user accounts are supported. When using local Django user
 accounts, new user accounts need to be created by Django admin prior to use.
 
 .. seealso:: :ref:`admin_adding_users`
+
+Using Gitlab for authentication
+--------------------------------------------------
+
+LAVA server may be configured to authenticate via Gitlab. Lava uses python-django-allauth
+as a backend for  Gitlab authentication.
+
+Gitlab server support is enabled and configured using the following parameters in
+``/etc/lava-server/settings.conf`` (JSON syntax)::
+
+"AUTH_GITLAB_SERVER_URI": "https://gitlab.example.com",
+
+These settings need to be configured in the GUI:
+
+.. figure:: images/gitlab-applications1.jpg
+   :scale: 100%
+   :align: center
+   :alt: gitlab application settings
+
+The new application for the LAVA authentication needs to be registered, the callback URL is needed to be set-up, with permission read_user.
+
+
+.. figure:: images/gitlab-applications2.jpg
+   :scale: 100%
+   :align: center
+   :alt: gitlab application settings
+
+The information ID, secret and callnack URL need to be copied to the social application set.
+
+.. figure:: images/lava-site-gitlab.jpg
+   :scale: 100%
+   :align: center
+   :alt: lava site settings
+
+The Gitlab site with SITE_ID needs to be edited.
+
+.. figure:: images/lava-social-gitlab.jpg
+   :scale: 100%
+   :align: center
+   :alt: lava social application settings
+
+Social application needs to be set-up with social application data.
+
+
+.. figure:: images/gitlab-authorization.jpg
+   :scale: 100%
+   :align: center
+   :alt: gitlab application authorization
+
+After the login, to the gitlab the new user needs to authorize the application.
 
 .. _ldap_authentication:
 
