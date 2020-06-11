@@ -25,3 +25,4 @@ pyudev python3-pyudev; PEP386
 requests python3-requests; PEP386
 setproctitle python3-setproctitle; PEP386
 voluptuous python3-voluptuous; PEP386
+python-django-allauth python3-django-allauth; PEP386
