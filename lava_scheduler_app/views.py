@@ -1927,7 +1927,7 @@ def device_detail(request, pk):
     overrides = []
     try:
         mismatch = not bool(device.load_configuration())
-    except yaml.YAMLError:
+    except:
         mismatch = True
 
     device_can_change = device.can_change(request.user)

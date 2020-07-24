@@ -176,18 +176,27 @@ def schedule_health_checks_for_device_type(logger, dt):
             device.get_state_display(),
             device.get_health_display(),
         )
-        if not device.is_valid():
+
+        try:
+            reason = "reason unknown"
+            valid = device.is_valid()
+        except Exception as exc:
+            logger.exception("Invalid device config")
+            # Can't use repr(exc) or str(exc) alobe, may miss important information
+            reason = "%s: %s" % (type(exc).__name__, str(exc))
+            valid = False
+        if not valid:
             prev_health_display = device.get_health_display()
             device.health = Device.HEALTH_BAD
             device.log_admin_entry(
                 None,
-                "%s → %s (Invalid device configuration)"
-                % (prev_health_display, device.get_health_display()),
+                "%s → %s (Invalid device configuration: %s)"
+                % (prev_health_display, device.get_health_display(), reason),
             )
             device.save()
             logger.debug(
-                "%s → %s (Invalid device configuration for %s)"
-                % (prev_health_display, device.get_health_display(), device.hostname)
+                "%s → %s (Invalid device configuration for %s: %s)"
+                % (prev_health_display, device.get_health_display(), device.hostname, reason)
             )
             continue
         logger.debug("  |--> scheduling health check")
@@ -202,8 +211,8 @@ def schedule_health_checks_for_device_type(logger, dt):
             device.health = Device.HEALTH_BAD
             device.log_admin_entry(
                 None,
-                "%s → %s (Invalid health check)"
-                % (prev_health_display, device.get_health_display()),
+                "%s → %s (Invalid health check: %s)"
+                % (prev_health_display, device.get_health_display(), repr(exc)),
             )
             device.save()
 
@@ -277,18 +286,26 @@ def schedule_jobs_for_device_type(logger, dt, available_devices):
             )
             continue
 
-        if not device.is_valid():
+        try:
+            reason = "reason unknown"
+            valid = device.is_valid()
+        except Exception as exc:
+            logger.exception("Invalid device config")
+            # Can't use repr(exc) or str(exc) alobe, may miss important information
+            reason = "%s: %s" % (type(exc).__name__, str(exc))
+            valid = False
+        if not valid:
             prev_health_display = device.get_health_display()
             device.health = Device.HEALTH_BAD
             device.log_admin_entry(
                 None,
-                "%s → %s (Invalid device configuration)"
-                % (prev_health_display, device.get_health_display()),
+                "%s → %s (Invalid device configuration: %s)"
+                % (prev_health_display, device.get_health_display(), reason),
             )
             device.save()
             logger.debug(
-                "%s → %s (Invalid device configuration for %s)"
-                % (prev_health_display, device.get_health_display(), device.hostname)
+                "%s → %s (Invalid device configuration for %s: %s)"
+                % (prev_health_display, device.get_health_display(), device.hostname, reason)
             )
             continue
 

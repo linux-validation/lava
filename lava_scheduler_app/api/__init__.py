@@ -1136,15 +1136,15 @@ class SchedulerAPI(ExposedV2API):
         results = {}
         for device in devices:
             key = str(device.hostname)
-            config = device.load_configuration(output_format="yaml")
-            if config is None:
-                results[key] = {"Invalid": "Missing device dictionary"}
-                continue
             try:
+                config = device.load_configuration(output_format="yaml")
+                if config is None:
+                    results[key] = {"Invalid": "Missing device dictionary"}
+                    continue
                 # validate against the device schema
                 validate_device(yaml_safe_load(config))
-            except SubmissionException as exc:
-                results[key] = {"Invalid": exc}
+            except Exception as exc:
+                results[key] = {"Invalid": repr(exc)}
                 continue
             results[key] = {"Valid": None}
         return xmlrpc.client.Binary(yaml_safe_dump(results).encode("UTF-8"))

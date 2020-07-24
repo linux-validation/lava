@@ -920,25 +920,22 @@ class Device(RestrictedObject):
             return False
 
     def get_extends(self):
-        jinja_config = self.load_configuration(output_format="raw")
-        if not jinja_config:
-            return None
-
         env = jinja2.Environment(  # nosec - YAML, not HTML, no XSS scope.
             autoescape=False
         )
         try:
+            jinja_config = self.load_configuration(output_format="raw")
             ast = env.parse(jinja_config)
             extends = list(ast.find_all(jinja2.nodes.Extends))
             if len(extends) != 1:
                 logger = logging.getLogger("lava_scheduler_app")
-                logger.error("Found %d extends for %s", len(extends), self.hostname)
+                logger.error("Found %d (!= 1) extends for %s", len(extends), self.hostname)
                 return None
             else:
                 return os.path.splitext(extends[0].template.value)[0]
-        except jinja2.TemplateError as exc:
+        except Exception as exc:
             logger = logging.getLogger("lava_scheduler_app")
-            logger.error("Invalid template for %s: %s", self.hostname, str(exc))
+            logger.error("Invalid template for %s: %s", self.hostname, repr(exc))
             return None
 
     def get_health_check(self):

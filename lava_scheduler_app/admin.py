@@ -371,7 +371,10 @@ class DeviceAdmin(admin.ModelAdmin):
         return self.readonly_fields
 
     def valid_device(self, obj):
-        return bool(obj.is_valid())
+        try:
+            return bool(obj.is_valid())
+        except:
+            return False
 
     valid_device.boolean = True
     valid_device.short_description = "Config"

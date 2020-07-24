@@ -101,9 +101,15 @@ def check_device_configuration(app_configs, **kwargs):
     errors = []
 
     for device in Device.objects.exclude(health=Device.HEALTH_RETIRED):
-        if not device.is_valid():
+        try:
+            reason = "reason unknown"
+            valid = device.is_valid()
+        except Exception as exc:
+            reason = repr(exc)
+            valid = False
+        if not valid:
             errors.append(
-                Error("Invalid configuration for '%s'" % device.hostname, obj="devices")
+                Error("Invalid configuration for '%s': %s" % (device.hostname, reason), obj="devices")
             )
 
     return errors
