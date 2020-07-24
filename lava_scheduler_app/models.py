@@ -731,11 +731,15 @@ class Device(RestrictedObject):
         return False
 
     def is_valid(self):
-        try:
-            rendered = self.load_configuration()
-            validate_device(rendered)
-        except (SubmissionException, yaml.YAMLError):
-            return False
+        """
+        Returns:
+            True: Device configuration is valid.
+        Raises:
+            Exception: Device configuration is invalid, additional information
+            if provided in the exception (must be communicate back to user).
+        """
+        rendered = self.load_configuration()
+        validate_device(rendered)
         return True
 
     def log_admin_entry(self, user, reason):
@@ -863,15 +867,10 @@ class Device(RestrictedObject):
             job_ctx = {}
 
         if output_format == "raw":
-            with contextlib.suppress(OSError):
-                return File("device", self.hostname).read()
-            return None
+            return File("device", self.hostname).read()
 
-        try:
-            template = environment.devices().get_template("%s.jinja2" % self.hostname)
-            device_template = template.render(**job_ctx)
-        except jinja2.TemplateError:
-            return None
+        template = environment.devices().get_template("%s.jinja2" % self.hostname)
+        device_template = template.render(**job_ctx)
 
         if output_format == "yaml":
             return device_template
