@@ -25,6 +25,7 @@ import contextlib
 import datetime
 import logging
 import multiprocessing
+import re
 import requests
 import signal
 import time
@@ -184,10 +185,28 @@ class YAMLLogger(logging.Logger):
         self.log_message(logging.DEBUG, "debug", message, *args, **kwargs)
 
     def input(self, message, *args, **kwargs):
-        self.log_message(logging.INFO, "input", message, *args, **kwargs)
+        if isinstance(message, str) and re.search("TOKEN_ARTIFACTORIAL", message):
+            self.log_message(
+                logging.INFO,
+                "input",
+                "*** REDACTED TOKEN_ARTIFACTORIAL ***",
+                *args,
+                **kwargs,
+            )
+        else:
+            self.log_message(logging.INFO, "input", message, *args, **kwargs)
 
     def target(self, message, *args, **kwargs):
-        self.log_message(logging.INFO, "target", message, *args, **kwargs)
+        if isinstance(message, str) and re.search("TOKEN_ARTIFACTORIAL", message):
+            self.log_message(
+                logging.INFO,
+                "target",
+                "*** REDACTED TOKEN_ARTIFACTORIAL ***",
+                *args,
+                **kwargs,
+            )
+        else:
+            self.log_message(logging.INFO, "target", message, *args, **kwargs)
 
     def feedback(self, message, *args, **kwargs):
         self.log_message(logging.INFO, "feedback", message, *args, **kwargs)
