@@ -43,6 +43,35 @@ that he does control.
    submissions and only give that account minimal permissions to create the
    automated uploads.
 
+.. index:: upload method
+
+.. _upload_method:
+
+Uploads Action
+==============
+
+An 'upload' action can be added to the end of your pipeline which could be
+used to upload artifacts from the dispatcher in some supported cases. This
+can be useful for certain artifacts that aren't created on the device under
+test, but instead created on the dispatcher.
+
+.. code-block:: yaml
+
+  upload:
+    docker:
+      name: registry.example.com/upload
+      local: true
+    commands:
+    - /upload.sh {DIR}
+
+Commands can be run in a docker container on the dispatcher, and ``{DIR}``
+can be substituted in for the directory of the uploads directory for the job.
+
+Currently, the supported boot methods that allow for creation of artifacts on
+the dispatcher is as follows:
+
+ - fvp (See :ref:`boot_method_fvp` for arguments required there)
+
 Linaro LAVA-lab
 ===============
 

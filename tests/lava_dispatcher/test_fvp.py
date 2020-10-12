@@ -78,3 +78,38 @@ def test_transfer_overlay(monkeypatch):
         if action.name == "overlay-unpack"
     ][0]
     assert transfer_overlay is not None
+
+
+def test_upload(monkeypatch):
+    monkeypatch.setattr(Action, "run_cmd", lambda cmd, args: b"")
+    monkeypatch.setattr(docker, "which", lambda a: "/usr/bin/docker")
+    factory = TestFVPActions()
+    factory.setUp(job="sample_jobs/fvp-foundation-upload.yaml")
+    factory.job.validate()
+    assert [] == factory.job.pipeline.errors  # nosec
+    description_ref = factory.pipeline_reference(
+        "fvp-foundation-upload.yaml", job=factory.job
+    )
+    assert description_ref == factory.job.pipeline.describe(False)  # nosec
+    upload = [
+        action
+        for action in factory.job.pipeline.actions
+        if action.name == "upload-action"
+    ][0]
+    assert upload is not None
+    boot_fvp = [
+        action for action in factory.job.pipeline.actions if action.name == "boot-fvp"
+    ][0]
+    assert boot_fvp is not None
+    boot_fvp_main = [
+        action for action in boot_fvp.pipeline.actions if action.name == "boot-fvp-main"
+    ][0]
+    assert boot_fvp_main is not None
+    start_fvp = [
+        action for action in boot_fvp_main.pipeline.actions if action.name == "run-fvp"
+    ][0]
+    assert start_fvp is not None
+    assert (
+        f" --volume /var/lib/lava/dispatcher/tmp/{factory.job.job_id}/uploads:/mnt"
+        in start_fvp.extra_options
+    )

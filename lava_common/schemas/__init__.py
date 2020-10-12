@@ -369,6 +369,10 @@ def job(extra_context_variables=[]):
             Optional("notify"): notify(),
             Optional("reboot_to_fastboot"): bool,
             Required("actions"): [{Any("boot", "command", "deploy", "test"): dict}],
+            Optional("upload"): {
+                Required("commands"): [str],
+                Required("docker"): {Required("name"): str, Optional("local"): bool},
+            },
         },
         extra_checks,
     )

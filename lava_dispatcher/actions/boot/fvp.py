@@ -23,6 +23,7 @@ import time
 
 from lava_common.exceptions import JobError
 from lava_dispatcher.action import Pipeline, Action
+from lava_dispatcher.actions.upload import upload_path_from_job
 from lava_dispatcher.logical import Boot, RetryAction
 from lava_dispatcher.actions.boot import BootHasMixin, AutoLoginAction, OverlayUnpack
 from lava_dispatcher.shell import ExpectShellSession, ShellCommand, ShellSession
@@ -117,6 +118,11 @@ class BaseFVPAction(Action):
             self.extra_options += " --volume %s" % volume
         if "license_variable" in self.parameters:
             self.fvp_license = self.parameters["license_variable"]
+        if "artifact_dir" in self.parameters:
+            self.extra_options += " --volume %s:%s" % (
+                upload_path_from_job(self.job),
+                self.parameters["artifact_dir"],
+            )
 
     def construct_docker_fvp_command(self, docker_image, fvp_arguments):
         substitutions = {}
@@ -226,6 +232,18 @@ class CheckFVPVersionAction(BaseFVPAction):
         return shell_connection
 
 
+class FVPShellSession(ShellSession):
+    """When closing the final telnet connection, we need to send a close signal to the original process."""
+
+    def __init__(self, job, shell, secondary_shell):
+        super().__init__(job, shell)
+        self.secondary_shell = secondary_shell
+
+    def disconnect(self, reason=""):
+        super().disconnect(reason=reason)
+        self.secondary_shell.disconnect(reason=reason)
+
+
 class StartFVPAction(BaseFVPAction):
     name = "run-fvp"
     description = "call docker run with fvp boot entry point"
@@ -260,6 +278,7 @@ class StartFVPAction(BaseFVPAction):
         shell = ShellCommand(cmd, self.timeout, logger=self.logger)
 
         shell_connection = ShellSession(self.job, shell)
+        shell_connection.tags = ["process"]
         shell_connection = super().run(shell_connection, max_end_time)
 
         # Wait for the console string
@@ -291,6 +310,12 @@ class StartFVPAction(BaseFVPAction):
         self.shell = shell
 
         self.shell_session = shell_connection
+        self.set_namespace_data(
+            action=StartFVPAction.name,
+            label="fvp",
+            key="main_process",
+            value=shell_connection,
+        )
         return shell_connection
 
     def cleanup(self, connection):
@@ -320,7 +345,11 @@ class GetFVPSerialAction(Action):
         self.logger.debug("Connect command: %s", cmd)
         shell = ShellCommand(cmd, self.timeout, logger=self.logger)
 
-        shell_connection = ShellSession(self.job, shell)
+        main_shell = self.get_namespace_data(
+            action=StartFVPAction.name, label="fvp", key="main_process", deepcopy=False
+        )
+        shell_connection = FVPShellSession(self.job, shell, main_shell)
+        shell_connection.tags = ["telnet"]
         shell_connection = super().run(shell_connection, max_end_time)
 
         self.set_namespace_data(

@@ -22,12 +22,13 @@ import os
 import signal
 import decimal
 import logging
+
 from lava_dispatcher.action import InternalObject
 from lava_common.exceptions import LAVABug, TestError
 from lava_common.timeout import Timeout
 
 
-RECOGNIZED_TAGS = ("telnet", "ssh")
+RECOGNIZED_TAGS = ("telnet", "ssh", "process")
 
 
 class SignalMatch(InternalObject):
@@ -143,6 +144,7 @@ class Connection:
         ):
             raise LAVABug("'disconnect' not implemented")
 
+        close = True
         if self.connected:
             try:
                 if "telnet" in self.tags:
@@ -153,6 +155,10 @@ class Connection:
                     logger.info("Disconnecting from ssh: %s", reason)
                     self.sendline("", disconnecting=True)
                     self.sendline("~.", disconnecting=True)
+                elif "process" in self.tags:
+                    logger.info("Disconnecting from process: %s", reason)
+                    self.sendcontrol("c")
+                    close = False
                 elif self.name == "LxcSession":
                     logger.info("Disconnecting from lxc: %s", reason)
                     self.sendline("", disconnecting=True)
@@ -167,7 +173,7 @@ class Connection:
             logger.debug("Already disconnected")
 
         self.connected = False
-        if self.raw_connection:
+        if self.raw_connection and close:
             self.raw_connection.close(force=True)
         self.raw_connection = None
 

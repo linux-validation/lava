@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along
 # with this program; if not, see <http://www.gnu.org/licenses>.
-
+from lava_dispatcher.actions.upload import UploadAction
 from lava_dispatcher.job import Job
 from lava_common.compat import yaml_safe_load
 from lava_dispatcher.action import Pipeline, Timeout, JobError
@@ -177,6 +177,8 @@ class JobParser:
         pipeline.add_action(finalize)
         finalize.populate(None)
         job.pipeline = pipeline
+        if "upload" in data:
+            pipeline.add_action(UploadAction())
         if "compatibility" in data:
             try:
                 job_c = int(job.compatibility)

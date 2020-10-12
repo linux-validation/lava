@@ -420,6 +420,10 @@ _job_schema = Schema(
         Required("actions"): _job_actions_schema(),
         Optional("notify"): _job_notify_schema(),
         Optional("reboot_to_fastboot"): bool,
+        Optional("upload"): {
+            Required("commands"): [str],
+            Required("docker"): {Required("name"): str, Optional("local"): bool},
+        },
     }
 )
 
