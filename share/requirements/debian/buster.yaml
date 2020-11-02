@@ -19,7 +19,7 @@ lava-server:
     version: ">=1.21.2"
     name: python3-django-tables2
   django:
-    version: ">=1.10"
+    version: ">=2.2"
     name: python3-django
   djangorestframework:
     name: python3-djangorestframework
