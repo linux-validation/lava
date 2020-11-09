@@ -78,6 +78,7 @@ actions:
         ramdisk:
           commands:
 {% block ramdisk_commands %}
+{% set base_kernel_args = extra_kernel_args | default(base_kernel_args) %}
 {{ net_commands }}
           - clear
           - insmod linux
@@ -91,6 +92,7 @@ actions:
           - clear
           - boot
 {% endblock ramdisk_commands %}
+{% set base_kernel_args = extra_kernel_args | default(base_kernel_args) %}
         nbd:
           commands:
           - clear
@@ -105,6 +107,7 @@ actions:
         nfs:
           commands:
 {% block nfs_commands %}
+{% set base_kernel_args = extra_kernel_args | default(base_kernel_args) %}
 {{ net_commands }}
           - 'linux (tftp,{SERVER_IP})/{KERNEL} {{ console_args }} root=/dev/nfs rw {{ base_nfsroot_args }} {{ base_ip_args }} {{ base_kernel_args }}'
           - initrd (tftp,{SERVER_IP})/{RAMDISK}
