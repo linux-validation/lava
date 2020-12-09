@@ -114,6 +114,9 @@
   {% set baud_rate = baud_rate | default(115200)|string + parity + databits %}
   {% set console_device = "console=" + console_device + "," + baud_rate %}
 {% endif %}
+{% if console_earlycon %}
+  {% set console_device = console_device|default('') + " " + console_earlycon %}
+{% endif %}
 {% set base_kernel_args = extra_kernel_args | default(base_kernel_args) %}
 {% set action_timeout_bootloader_commands = action_timeout_bootloader_commands | default(3) %}
 {% set connection_timeout_bootloader_commands = connection_timeout_bootloader_commands | default(30) %}
