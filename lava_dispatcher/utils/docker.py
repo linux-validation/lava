@@ -37,16 +37,21 @@ class DockerRun:
         self.__tty__ = False
         self.__docker_options__ = []
         self.__docker_run_options__ = []
+        self.__capabilities__ = []
 
     @classmethod
     def from_parameters(cls, params):
         image = params["image"]
         run = cls(image)
         run.local(params.get("local", False))
+        run.capabilities(params.get("capabilities", []))
         return run
 
     def local(self, local):
         self.__local__ = local
+
+    def capabilities(self, capabilities):
+        self.__capabilities__ = capabilities
 
     def name(self, name):
         self.__name__ = name
@@ -91,6 +96,8 @@ class DockerRun:
             + ["run", "--rm", "--init"]
             + self.__docker_run_options__
         )
+        for cap in self.__capabilities__:
+            cmd.append(f"--cap-add={cap}")
         if self.__interactive__:
             cmd.append("--interactive")
         if self.__tty__:
