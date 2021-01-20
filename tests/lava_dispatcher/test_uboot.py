@@ -347,6 +347,7 @@ class TestUbootAction(StdoutTestCase):
             "{KERNEL}": kernel,
             "{DTB}": dtb,
             "{TEE}": tee,
+            "{DYNAMIC_KERNEL_ARGS}": " ",
         }
         params = device["actions"]["boot"]["methods"]
         params["u-boot"]["ramdisk"]["commands"] = substitute(
@@ -363,6 +364,10 @@ class TestUbootAction(StdoutTestCase):
         self.assertNotIn("setenv kernel_addr_r '{KERNEL_ADDR}'", commands)
         self.assertNotIn("setenv initrd_addr_r '{RAMDISK_ADDR}'", commands)
         self.assertNotIn("setenv fdt_addr_r '{DTB_ADDR}'", commands)
+        self.assertNotIn(
+            "setenv bootargs 'console=ttyO0,115200n8 root=/dev/ram0  {DYNAMIC_KERNEL_ARGS} ip=dhcp'",
+            commands,
+        )
 
         for line in params["u-boot"]["ramdisk"]["commands"]:
             line = line.replace("{SERVER_IP}", ip_addr)
@@ -382,6 +387,58 @@ class TestUbootAction(StdoutTestCase):
         self.assertNotIn("setenv kernel_addr_r '{KERNEL_ADDR}'", parsed)
         self.assertNotIn("setenv initrd_addr_r '{RAMDISK_ADDR}'", parsed)
         self.assertNotIn("setenv fdt_addr_r '{DTB_ADDR}'", parsed)
+
+    @patch("lava_dispatcher.utils.shell.which", return_value="/usr/bin/in.tftpd")
+    def test_dynamic_kernel_args(self, which_mock):
+        parameters = {
+            "dispatcher": {},  # fake dispatcher parameter. Normally added by parser
+            "device_type": "beaglebone-black",
+            "job_name": "uboot-pipeline",
+            "job_timeout": "15m",
+            "action_timeout": "5m",
+            "priority": "medium",
+            "actions": {
+                "boot": {
+                    "namespace": "common",
+                    "method": "u-boot",
+                    "commands": "ramdisk",
+                    "prompts": ["linaro-test", "root@debian:~#"],
+                    "dynamic_kernel_args": "foo=bar",
+                },
+                "deploy": {
+                    "namespace": "common",
+                    "ramdisk": {"url": "initrd.gz", "compression": "gz"},
+                    "kernel": {"url": "zImage", "type": "zimage"},
+                    "dtb": {"url": "broken.dtb"},
+                    "tee": {"url": "uTee"},
+                },
+            },
+        }
+        data = yaml_safe_load(Factory().create_device("bbb-01.jinja2")[0])
+        device = NewDevice(data)
+        job = Job(4212, parameters, None)
+        job.device = device
+        pipeline = Pipeline(job=job, parameters=parameters["actions"]["boot"])
+        job.pipeline = pipeline
+        overlay = BootloaderCommandOverlay()
+        connection = MagicMock()
+        connection.timeout = MagicMock()
+        pipeline.add_action(overlay)
+        overlay.set_namespace_data(
+            action="uboot-prepare-kernel",
+            label="bootcommand",
+            key="bootcommand",
+            value="bootz",
+        )
+        overlay.validate()
+        overlay.run(connection, 100)
+        commands = overlay.get_namespace_data(
+            action="bootloader-overlay", label=overlay.method, key="commands"
+        )
+        self.assertIn(
+            "setenv bootargs 'console=ttyO0,115200n8 root=/dev/ram0  foo=bar ip=dhcp'",
+            commands,
+        )
 
     @patch("lava_dispatcher.utils.shell.which", return_value="/usr/bin/in.tftpd")
     def test_overlay_noramdisk(self, which_mock):

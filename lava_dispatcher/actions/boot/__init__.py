@@ -568,6 +568,10 @@ class BootloaderCommandOverlay(Action):
             action="bootloader-from-media", label="uuid", key="boot_part"
         )
 
+        dynamic_kernel_args = self.parameters.get("dynamic_kernel_args")
+        dynamic_kernel_args = dynamic_kernel_args if dynamic_kernel_args else " "
+        substitutions["{DYNAMIC_KERNEL_ARGS}"] = dynamic_kernel_args
+
         # Save the substitutions
         self.set_namespace_data(
             action=self.name,

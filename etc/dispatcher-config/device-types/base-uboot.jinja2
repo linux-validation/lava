@@ -115,6 +115,7 @@
   {% set baud_rate = baud_rate | default(115200)|string + parity + databits %}
 {% endif %}
 {% set base_kernel_args = extra_kernel_args | default(base_kernel_args) %}
+{% set base_kernel_args = base_kernel_args + ' {DYNAMIC_KERNEL_ARGS}' %}
 {% set action_timeout_bootloader_commands = action_timeout_bootloader_commands | default(3) %}
 {% set connection_timeout_bootloader_commands = connection_timeout_bootloader_commands | default(30) %}
 

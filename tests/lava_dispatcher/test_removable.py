@@ -515,6 +515,7 @@ class TestRemovable(StdoutTestCase):
                 cubie["parameters"]["media"]["usb"][device_id]["device_id"],
                 u_boot_action.parameters["boot_part"],
             ),
+            "{DYNAMIC_KERNEL_ARGS}": " ",
         }
         self.assertEqual(
             "bootz 0x42000000 0x43300000 0x43000000", substitutions["{BOOTX}"]
@@ -533,7 +534,7 @@ class TestRemovable(StdoutTestCase):
                 "load usb 0:0:1 {RAMDISK_ADDR} /boot/initrd.img-3.16.0-4-armmp-lpae.u-boot",
                 "setenv initrd_size ${filesize}",
                 "load usb 0:0:1 {DTB_ADDR} /boot/dtb-3.16.0-4-armmp-lpae",
-                "console=ttyS0,115200n8 root=UUID=159d17cc-697c-4125-95a0-a3775e1deabe  ip=dhcp",
+                "console=ttyS0,115200n8 root=UUID=159d17cc-697c-4125-95a0-a3775e1deabe    ip=dhcp",
                 "bootz 0x42000000 0x43300000 0x43000000",
             ],
         )
