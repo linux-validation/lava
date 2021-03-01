@@ -27,12 +27,6 @@ Chart Group:&nbsp;&nbsp;<a href="{% url 'lava.results.chart_list' %}#{{ chart.ch
 <script src="{% static "lava_server/js/bootbox.js" %}"></script>
 <script src="{% static "lava_results_app/js/bootbox.data.toggle.js" %}"></script>
 <script src="{% static "lava_results_app/js/jquery.flot.js" %}"></script>
-<script src="{% static "lava_results_app/js/jquery.flot.canvas.js" %}"></script>
-<script src="{% static "lava_results_app/js/jquery.flot.dashes.js" %}"></script>
-<script src="{% static "lava_results_app/js/jquery.flot.axislabels.js" %}"></script>
-<script src="{% static "lava_results_app/js/jquery.flot.navigate.js" %}"></script>
-<script src="{% static "lava_results_app/js/jquery.flot.time.js" %}"></script>
-<script src="{% static "lava_results_app/js/jquery.flot.labels.js" %}"></script>
 
 <script>
   chart_data = $.parseJSON($('<div/>').html('{{chart_data|make_jquery_safe|escapejs}}').text());
