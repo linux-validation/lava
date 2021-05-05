@@ -20,10 +20,12 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import glob
+import os.path
 import shutil
 import sys
 
 import distutils.command.install_scripts
+import distutils.command.install_lib
 from setuptools import setup, find_packages
 
 
@@ -43,6 +45,18 @@ class rename_scripts(distutils.command.install_scripts.install_scripts):
                     print("Rename %r to %r" % (script, new_name))
                     shutil.move(script, new_name)
                     continue
+
+
+class install_empty_dotenv(distutils.command.install_lib.install_lib):
+    """
+    Installs an empty .env file along with the settings files, so django-environ
+    does not complain it is missing at startup.
+    """
+
+    def run(self):
+        super().run()
+        dotenv_path = os.path.join(self.install_dir, "lava_server", "settings", ".env")
+        open(dotenv_path, "w")
 
 
 def modules(name):
@@ -167,7 +181,10 @@ SERVER = {
         ("/var/lib/lava-server/home/", []),
         ("/var/log/lava-server/", []),
     ],
-    "cmdclass": {"install_scripts": rename_scripts},
+    "cmdclass": {
+        "install_scripts": rename_scripts,
+        "install_lib": install_empty_dotenv,
+    },
 }
 
 PKGS = {
