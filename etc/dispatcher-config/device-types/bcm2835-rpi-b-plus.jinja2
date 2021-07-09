@@ -1,0 +1,16 @@
+# Raspberry Pi B+
+{# device_type = "bcm2835-rpi-b-plus" #}
+{% extends 'rpi-common.jinja2' %}
+
+{% if extra_kernel_args %}
+{% set extra_kernel_args = "earlycon=pl011,mmio32,0x20201000 " +  extra_kernel_args %}
+{% else %}
+{% set extra_kernel_args = "earlycon=pl011,mmio32,0x20201000" %}
+{% endif %}
+
+
+{% if custom_kernel_args %}
+{% set extra_kernel_args = custom_kernel_args %}
+{% endif %}
+
+{% set boot_character_delay = boot_character_delay | default(10) %}
