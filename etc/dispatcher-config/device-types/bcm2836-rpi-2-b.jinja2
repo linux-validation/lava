@@ -1,3 +1,15 @@
-# Raspberry Pi 2b
+# Raspberry Pi 2B
 {# device_type = "bcm2836-rpi-2-b" #}
 {% extends 'rpi-common.jinja2' %}
+
+{% if extra_kernel_args %}
+{% set extra_kernel_args = "earlycon=pl011,mmio32,0x3f201000 " +  extra_kernel_args %}
+{% else %}
+{% set extra_kernel_args = "earlycon=pl011,mmio32,0x3f201000" %}
+{% endif %}
+
+{% if custom_kernel_args %}
+{% set extra_kernel_args = custom_kernel_args %}
+{% endif %}
+
+{% set boot_character_delay = boot_character_delay | default(10) %}
