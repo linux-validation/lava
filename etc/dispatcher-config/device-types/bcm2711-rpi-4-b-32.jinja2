@@ -1,0 +1,35 @@
+# Raspberry Pi 4b
+{# set device_type = "bcm2711-rpi-4-b-32" #}
+
+{% extends 'base-uboot.jinja2' %}
+
+{% set interrupt_ctrl_list = ['c'] %}
+
+{% set bootz_kernel_addr = '0x01000000' %}
+{% set bootz_ramdisk_addr = '0x04000000' %}
+{% set bootz_dtb_addr = '0x03f00000' %}
+
+{% set bootm_kernel_addr = '0x01000000' %}
+{% set bootm_ramdisk_addr = '0x04000000' %}
+{% set bootm_dtb_addr = '0x03f00000' %}
+
+{% set uboot_mkimage_arch = 'arm' %}
+
+{% set bootloader_prompt = bootloader_prompt|default('U-Boot>') %}
+
+{% set console_device = console_device|default('ttyS0') %}
+# rpi-sources does not boot without 8250.nr_uarts=1
+# The normal console (on pinouts) is ttyS1, but with 8250.nr_uarts=1, ttyS1 become ttyS0
+# The earlycon is for this console
+# rpi-sources need also the cma to be >= 64M
+# so a job with rpi-sources probably need to set in job definitions:
+# context:
+#   extra_kernel_args: "8250.nr_uarts=1 cma=64M"
+#   console_device: ttyS0
+{% set extra_kernel_args = extra_kernel_args|default("earlycon=uart8250,mmio32,0xfe215040") %}
+
+{% if custom_kernel_args %}
+{% set extra_kernel_args = custom_kernel_args %}
+{% endif %}
+
+{% set boot_character_delay = boot_character_delay | default(10) %}
