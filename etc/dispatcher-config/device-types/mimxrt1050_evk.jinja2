@@ -27,8 +27,9 @@ actions:
       pyocd:
         parameters:
           command:
-            pyocd-flashtool
+            pyocd
           options:
+          - flash
           - -d {{ debug|default('debug') }}
           - -t mimxrt1050_hyperflash
           - -f 3000000
