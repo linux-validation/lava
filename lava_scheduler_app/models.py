@@ -740,11 +740,15 @@ class Device(RestrictedObject):
         return False
 
     def is_valid(self):
-        try:
-            rendered = self.load_configuration()
-            validate_device(rendered)
-        except (SubmissionException, yaml.YAMLError):
-            return False
+        """
+        Returns:
+            True: Device configuration is valid.
+        Raises:
+            Exception: Device configuration is invalid, additional information
+            if provided in the exception (must be communicate back to user).
+        """
+        rendered = self.load_configuration()
+        validate_device(rendered)
         return True
 
     def log_admin_entry(self, user, reason):
@@ -872,15 +876,10 @@ class Device(RestrictedObject):
             job_ctx = {}
 
         if output_format == "raw":
-            with contextlib.suppress(OSError):
-                return File("device", self.hostname).read()
-            return None
+            return File("device", self.hostname).read()
 
-        try:
-            template = environment.devices().get_template("%s.jinja2" % self.hostname)
-            device_template = template.render(**job_ctx)
-        except jinja2.TemplateError:
-            return None
+        template = environment.devices().get_template("%s.jinja2" % self.hostname)
+        device_template = template.render(**job_ctx)
 
         if output_format == "yaml":
             return device_template
@@ -930,25 +929,22 @@ class Device(RestrictedObject):
             return False
 
     def get_extends(self):
-        jinja_config = self.load_configuration(output_format="raw")
-        if not jinja_config:
-            return None
-
         env = jinja2.Environment(  # nosec - YAML, not HTML, no XSS scope.
             autoescape=False
         )
         try:
+            jinja_config = self.load_configuration(output_format="raw")
             ast = env.parse(jinja_config)
             extends = list(ast.find_all(jinja2.nodes.Extends))
             if len(extends) != 1:
                 logger = logging.getLogger("lava_scheduler_app")
-                logger.error("Found %d extends for %s", len(extends), self.hostname)
+                logger.error("Found %d (!= 1) extends for %s", len(extends), self.hostname)
                 return None
             else:
                 return os.path.splitext(extends[0].template.value)[0]
-        except jinja2.TemplateError as exc:
+        except Exception as exc:
             logger = logging.getLogger("lava_scheduler_app")
-            logger.error("Invalid template for %s: %s", self.hostname, str(exc))
+            logger.error("Invalid template for %s: %s", self.hostname, repr(exc))
             return None
 
     def get_health_check(self):
