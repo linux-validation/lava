@@ -137,7 +137,7 @@ class BaseFVPAction(Action):
 
     def construct_docker_fvp_command(self, docker_image, fvp_arguments):
         substitutions = {}
-        cmd = "docker run --rm --interactive --tty --hostname lava"
+        cmd = "docker run --rm --interactive --tty --hostname lava-fvp"
         cmd += " --name %s" % self.container
         self.logger.debug(
             "Download action namespace keys are: %s",
