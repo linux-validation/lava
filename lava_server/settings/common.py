@@ -24,8 +24,8 @@ import contextlib
 import imp
 import re
 
-from django.conf.global_settings import *
 from django.core.exceptions import ImproperlyConfigured
+from django.conf.global_settings import DISALLOWED_USER_AGENTS, INTERNAL_IPS
 
 from lava_common.version import __version__
 from lava_common.compat import yaml_safe_load
