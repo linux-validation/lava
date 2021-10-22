@@ -101,7 +101,7 @@ need to be performed:
   **Application**, and enable the ``read_user`` scope.
 
 * The Redirect URI is the URL where users are sent after they authorize with
-  GitLab. The form is: `LAVA_URL/accounts/gitlab/login/callback`
+  GitLab. The form is: `LAVA_URL/accounts/gitlab/login/callback/`
   Currently there seems to be a bug in GitLab so the Redirect URI works only
   with **http** protocol.
 
@@ -120,3 +120,36 @@ need to be performed:
 
 .. note:: If SMTP is not set up in LAVA, you can get a 500 Internal server
           error. Login will still work despite the error.
+
+Using GitHub
+------------
+
+LAVA server can also use GitHub as its authentication server.
+To enable it, you need to set 'AUTH_GITHUB_ENABLE: True'
+in your LAVA configuration. Do this by placing a config snippet in yaml format
+in the directory ``/etc/lava-server/settings.d``.
+It also requires django-allauth to be installed if it hasn't been done.
+Follow the instructions in the Using GitLab session above to install the module.
+
+Before you can use `GitHub Authentication`_, some additional setup steps need to
+be performed:
+
+.. _`GitHub Authentication`: https://docs.github.com/en/developers/apps/building-oauth-apps/authorizing-oauth-apps
+
+* Navigate to `https://github.com/settings/applications/new` and create a new
+  OAuth application
+
+* The Homepage URL is your LAVA server URL
+
+* The Authorization callback URL is the URL where users are sent after they authorize
+  with GitHub. The form is: `LAVA_URL/accounts/github/login/callback/`
+
+* Generate a new client secret
+
+* In your LAVA administration dashboard, go to **Social Accounts** and
+  add a **Social application**. Select **GitHub** as provider and
+  enter the credentials you obtained from GitHub as **Client ID** and
+  the **Client secret** you just generated
+
+* Move the sites that you will use GitHub to authenticate from the 
+  **Available sites** to **Chosen site** on the **Sites** tables.

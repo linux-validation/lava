@@ -215,6 +215,10 @@ AUTH_LDAP_GROUP_TYPE = None
 AUTH_GITLAB_URL = None
 AUTH_GITLAB_SCOPE = ["read_user"]
 
+# Github support
+AUTH_GITHUB_ENABLE = False
+AUTH_GITHUB_SCOPE = ["user", "read:org"]
+
 # Debian SSO is of be default
 AUTH_DEBIAN_SSO = None
 
@@ -315,6 +319,8 @@ def update(values):
     AUTH_DEBIAN_SSO = values.get("AUTH_DEBIAN_SSO")
     AUTH_GITLAB_URL = values.get("AUTH_GITLAB_URL")
     AUTH_GITLAB_SCOPE = values.get("AUTH_GITLAB_SCOPE")
+    AUTH_GITHUB_ENABLE = values.get("AUTH_GITHUB_ENABLE")
+    AUTH_GITHUB_SCOPE = values.get("AUTH_GITHUB_SCOPE")
     AUTHENTICATION_BACKENDS = values.get("AUTHENTICATION_BACKENDS")
     DISALLOWED_USER_AGENTS = values.get("DISALLOWED_USER_AGENTS")
     DJANGO_LOGFILE = values.get("DJANGO_LOGFILE")
@@ -344,19 +350,27 @@ def update(values):
     ADMINS = [tuple(v) for v in ADMINS]
     MANAGERS = [tuple(v) for v in MANAGERS]
 
-    # Gitlab authentication config
-    if AUTH_GITLAB_URL:
+    # Gitlab/Github authentication config
+    GITLAB_CONFIG = {"GITLAB_URL": AUTH_GITLAB_URL, "SCOPE": AUTH_GITLAB_SCOPE}
+    GITHUB_CONFIG = {"SCOPE": AUTH_GITHUB_SCOPE}
+
+    SOCIALACCOUNT_PROVIDERS = {}
+
+    if AUTH_GITLAB_URL or AUTH_GITHUB_ENABLE:
         INSTALLED_APPS.append("allauth")
         INSTALLED_APPS.append("allauth.account")
         INSTALLED_APPS.append("allauth.socialaccount")
-        INSTALLED_APPS.append("allauth.socialaccount.providers.gitlab")
 
         AUTHENTICATION_BACKENDS.append(
             "allauth.account.auth_backends.AuthenticationBackend"
         )
-        SOCIALACCOUNT_PROVIDERS = {
-            "gitlab": {"GITLAB_URL": AUTH_GITLAB_URL, "SCOPE": AUTH_GITLAB_SCOPE}
-        }
+        if AUTH_GITLAB_URL:
+            INSTALLED_APPS.append("allauth.socialaccount.providers.gitlab")
+            SOCIALACCOUNT_PROVIDERS["gitlab"] = GITLAB_CONFIG
+
+        if AUTH_GITHUB_ENABLE:
+            INSTALLED_APPS.append("allauth.socialaccount.providers.github")
+            SOCIALACCOUNT_PROVIDERS["github"] = GITHUB_CONFIG
 
     # LDAP authentication config
     if AUTH_LDAP_SERVER_URI:
