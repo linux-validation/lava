@@ -1,15 +1,16 @@
 {% extends 'base-grub.jinja2' %}
+{% set boot_character_delay = boot_character_delay | default(150) %}
 
-{% set grub_autoboot_prompt = grub_autoboot_prompt|default('SecStartup') %}
-{% set boot_character_delay = boot_character_delay | default(1) %}
-{% set kernel_start_message = 'Booting in blind mode' %}
+{% set console_device = console_device | default('ttyAMA0') %}
+{% set baud_rate = baud_rate | default(115200) %}
 
-{% set base_ip_args = "ip=dhcp" %}
-{% set base_ramdisk_ip_args = "ip=:::::eth0:dhcp" %}
+{% set extra_ramdisk_args = " rdinit=/init" %}
+{% set extra_kernel_args = extra_kernel_args | default('acpi=force crashkernel=256M@32M') %}
 
-{% set extra_ramdisk_args = " root=/dev/ram0" %}
-{% set modules = ["linux", "tftp"] %}
-{% set console_device = "tty0 console=ttyS0" %}
+{% set has_dtb = false %}
+{% set modules = ["net", "tftp", "gzio", "part_gpt", "efi_gop"] %}
+{% set efinet = true %}
+{% set net_interface = " efinet3" %}
 
 {% block timeouts %}
 timeouts:
@@ -26,8 +27,6 @@ timeouts:
       seconds: 600
     auto-login-action:
       seconds: 600
-    installer-wait:
-      seconds: 5400
     pdu-reboot:
       seconds: 3000
   connections:
@@ -37,12 +36,10 @@ timeouts:
        seconds: 5400
     bootloader-action:
        seconds: 5400
-    installer-wait:
-      seconds: 5400
     bootloader-retry:
       seconds: 3000
     bootloader-interrupt:
       seconds: 300
     bootloader-commands:
       seconds: 600
-{% endblock timeouts %}
+{% endblock %}
