@@ -618,6 +618,7 @@ The ``fvp`` boot method allows you to run Fixed Virtual Platforms.
         - 'root@(.*):/#'
       image: /path/to/FVP_Binary
       licence_variable: ARMLMD_LICENSE_FILE=foo
+      artifact_dir: /mnt
       arguments:
         - "-C board.virtioblockdevice.image_path={DISK}"
         ...
@@ -635,6 +636,11 @@ and the ``licence_variable`` set as an environment variable.
 You can use ``{IMAGE_NAME}`` which will be replaced with the path to the
 image with the same key under ``images`` in the previous ``fvp`` deploy stage.
 ``{ARTIFACT_DIR}`` can also be used for the directory where all images are deployed.
+
+If the FVP binary creates any output files on the dispatcher, use the ``artifact_dir``
+option to ensure a directory from the dispatcher is mounted in the container. Then
+arguments can be passed to the FVP to save these output files in this location. See
+:ref:`upload_method` for extra details on how these can be exported.
 
 .. note:: Previous to running an ``fvp`` boot, you should run an ``fvp`` deploy.
 
