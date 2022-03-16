@@ -77,7 +77,7 @@ class DockerAction(Action):
         # The string should be safe for command line inclusion
         if (
             re.compile(
-                "^[a-z0-9]+[a-z0-9._/-]*[a-z0-9]+(:[a-zA-Z0-9_]+[a-zA-Z0-9._-]*)?$"
+                "^[a-z0-9.:_-]+[a-z0-9._/-]*[a-z0-9]+(:[a-zA-Z0-9_]+[a-zA-Z0-9._-]*)?$"
             ).match(self.image_name)
             is None
         ):
