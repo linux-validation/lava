@@ -18,6 +18,8 @@
 # along
 # with this program; if not, see <http://www.gnu.org/licenses>.
 
+from typing import ClassVar, Type
+
 from collections import OrderedDict
 import logging
 import copy
@@ -356,20 +358,20 @@ class Action:
         self.force_prompt = False
 
     # Section
-    section = None
+    section: ClassVar[str] = ""
     # public actions (i.e. those who can be referenced from a job file) must
     # declare a 'class-type' name so they can be looked up.
     # summary and description are used to identify instances.
-    name = None
+    name: ClassVar[str] = ""
     # Used in the pipeline to explain what the commands will attempt to do.
-    description = None
+    description: ClassVar[str] = ""
     # A short summary of this instance of a class inheriting from Action.  May
     # be None.
-    summary = None
+    summary: ClassVar[str] = ""
     # Exception to raise when this action is timing out
-    timeout_exception = JobError
+    timeout_exception: ClassVar[Type[LAVAError]] = JobError
     # Exception to raise when a command run by the action fails
-    command_exception = JobError
+    command_exception: ClassVar[Type[LAVAError]] = JobError
 
     @property
     def data(self):
@@ -613,7 +615,9 @@ class Action:
             self.logger.debug("output: %s", line)
         return log
 
-    def run_cmd(self, command_list, allow_fail=False, error_msg=None, cwd=None):
+    def run_cmd(
+        self, command_list, allow_fail=False, error_msg=None, exception=None, cwd=None
+    ):
         """
         Run the given command on the dispatcher. If the command fail, a
         JobError will be raised unless allow_fail is set to True.
@@ -622,31 +626,44 @@ class Action:
         :param: command_list - the command to run (as a list)
         :param: allow_fail - if True, do not raise a JobError when the command fail (return non 0)
         :param: error_msg - the exception message.
+        :param: exception - the exception to raise.
         :param: cwd - the current working directory for this command
         :return: return code of the command
         """
-        # Build the command list (adding 'nice' at the front)
+        # Build the command list (adding 'timeout' at the front)
         if isinstance(command_list, str):
             command_list = shlex.split(command_list)
         elif not isinstance(command_list, list):
             raise LAVABug("commands to run_cmd need to be a list or a string")
-        command_list = [str(s) for s in command_list]
+
+        command_list = [
+            "timeout",
+            "--preserve-status",
+            "--kill-after=10",
+            "-v",
+            str(self.timeout.duration),
+        ] + [str(s) for s in command_list]
+
+        # Default to self.command_exception
+        command_exception = (
+            exception if exception is not None else self.command_exception
+        )
 
         # Build the error message
-        log_error_msg = "Unable to run 'nice' '%s'" % "' '".join(command_list)
+        log_error_msg = "Unable to run '%s'" % "' '".join(command_list)
         if error_msg is None:
             error_msg = log_error_msg
 
         # Start the subprocess
-        self.logger.debug("Calling: 'nice' '%s'", "' '".join(command_list))
+        self.logger.debug("Calling: '%s'", "' '".join(command_list))
         start = time.time()
 
         cmd_logger = CommandLogger(self.logger)
         ret = None
         try:
             proc = pexpect.spawn(
-                "nice",
-                command_list,
+                command_list[0],
+                command_list[1:],
                 cwd=cwd,
                 encoding="utf-8",
                 codec_errors="replace",
@@ -669,11 +686,13 @@ class Action:
             self.logger.debug(
                 "Returned %d in %s seconds", ret, int(time.time() - start)
             )
+        else:
+            self.logger.debug("Failed in %s seconds", int(time.time() - start))
 
         # Check the return value
         if ret != 0 and not allow_fail:
-            self.logger.error("Unable to run 'nice' '%s'", command_list)
-            raise self.command_exception(error_msg)
+            self.logger.error(log_error_msg)
+            raise command_exception(error_msg)
         return ret
 
     def run_command(self, command_list, allow_silent=False, allow_fail=False, cwd=None):

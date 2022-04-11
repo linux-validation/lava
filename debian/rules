@@ -53,6 +53,7 @@ override_dh_auto_build:
 	make -C doc/v2/ html SPHINXBUILD="/usr/share/sphinx/scripts/python3/sphinx-build" SPHINXOPTS="-j 4 -D today=\"$(BUILD_DATE)\""
 	$(RM) doc/v2/_build/html/objects.inv
 	make -C man/ man SPHINXBUILD="/usr/share/sphinx/scripts/python3/sphinx-build" SPHINXOPTS="-j 4 -D today=\"$(BUILD_DATE)\""
+	mkdocs build -f doc/mkdocs.yml --theme mkdocs
 
 override_dh_auto_install:
 	find . -path '*/__pycache__/*' -delete
@@ -82,6 +83,10 @@ override_dh_auto_install:
 	rm -rf $(CURDIR)/build
 	# handle embedded JS
 	python3 ./share/javascript.py -f ./share/javascript.yaml --remove
+	DJANGO_BASE_DIR="debian/lava-server/usr/share/lava-server/" python3 manage.py collectstatic
+	$(RM) -rf debian/lava-server/$(PYTHONDIR)/lava_results_app/static
+	$(RM) -rf debian/lava-server/$(PYTHONDIR)/lava_scheduler_app/static
+	$(RM) -rf debian/lava-server/$(PYTHONDIR)/lava_server/static
 
 override_dh_fixperms-arch:
 	dh_fixperms -X debian/lava-dispatcher/usr/lib/python3/dist-packages/lava_dispatcher/dynamic_vm_keys/lava
