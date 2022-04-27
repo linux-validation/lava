@@ -267,16 +267,12 @@ class RestrictedTestJobQuerySet(RestrictedObjectQuerySet):
 
             # Add viewing_groups filter.
             if perm == self.model.VIEW_PERMISSION:
-                # Needed to determine if viewing_groups is subset of all users
-                # groups, so remove all jobs where any viewing group is in groups
-                # this user is not part of.
-                nonuser_groups = Group.objects.exclude(
-                    pk__in=[g.id for g in user.groups.all()]
-                )
-                # NOTE: Only the last two conditions will be ANDed. Keep in mind if
-                # another filter needs to be added in between this one and the one
-                # before.
-                filters |= Q(id__in=vg_ids) & ~Q(viewing_groups__in=nonuser_groups)
+                # Group ids of viewing_groups should be
+                # the same as any groups the user is part of
+                testjob_vgs = TestJob.objects.filter(
+                    Q(viewing_groups__isnull=False) &
+                    Q(viewing_groups__in=user.groups.all()))
+                filters |= Q(id__in=testjob_vgs)
 
             return self.filter(filters)
 
