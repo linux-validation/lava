@@ -91,6 +91,7 @@ class Pipeline:
         # FIXME: if this is only happening in unit test, this has to be fixed later on
         # should only be None inside the unit tests
         action.job = self.job
+        action.parent = self
         if self.parent:  # action
             self.parent.pipeline = self
             action.level = "%s.%s" % (self.parent.level, len(self.actions))
@@ -345,6 +346,8 @@ class Action:
         # subsequently except by RetryCommand.
         self.level = None
         self.pipeline = None
+        self.parent = None
+        self.revised_max_end_time_inc = 0
         self.__parameters__ = {}
         self.__errors__ = []
         self.job = None
@@ -859,6 +862,7 @@ class Action:
                 "parameters",
                 "SignalDirector",
                 "signal_director",
+                "parent",
             ]
         )
         for attr in attrs - skip_set:
