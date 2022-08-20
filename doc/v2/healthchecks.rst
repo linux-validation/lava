@@ -105,7 +105,7 @@ health checks) use LXC:
 
 .. code-block:: jinja
 
- {% set static_info = [{'board_id': 'S_NO18080201'}] %}
+ {% set static_info = [{'ID_SERIAL_SHORT': 'S_NO18080201', '_connection': 'usb'}] %}
 
 When the test job starts, this USB device needs to be added to the LXC,
 so LAVA will raise an :ref:`infrastructure issue

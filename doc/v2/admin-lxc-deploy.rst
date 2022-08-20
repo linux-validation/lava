@@ -81,11 +81,20 @@ during the time that the test job is running.
   is accessible to the worker even when the DUT is powered off. These attached
   devices need to use ``static_info``.
 
-  * Static USB devices (using ``board_id``, ``usb_vendor_id`` or
-    ``usb_product_id``) will be added to the LXC at the start of the test job,
+  * Static USB devices will be added to the LXC at the start of the test job,
     including associated ``/dev/`` nodes like ``/dev/tty*`` or
     ``/dev/serial/by-id/`` etc. Test writers will need to locate the correct
     device by inspecting paths like ``/dev/serial/by-id/``.
+
+  * Static USB devices can be specified in two ways:
+
+    * Using lowercase, LAVA specific parameters: ``board_id``,
+      ``usb_vendor_id`` or ``usb_product_id``). These are deprecated, and will
+      no longer be supported in a future release.
+
+    * Using udev variables, in uppercase (``ID_SERIAL_SHORT``,
+      ``ID_VENDOR_ID``, ``ID_MODEL_ID``), plus the special key ``"_connection":
+      "usb"``, which tells LAVA that it's dealing with an USB device.
 
   * Other static devices which are accessible over the network can be made
     available to a test shell in the LXC through lava test shell helpers.
@@ -128,20 +137,28 @@ rules as for :ref:`Android devices <add_android_devices_lxc>`::
 
  [{'board_id': 'S_NO62200001'}]
 
+.. caution:: This syntax is now deprecated. Please start using udev variable
+   names directly. For example instead of using 'board_id' you should now use
+   'ID_SERIAL_SHORT'. In addition the 'static_info' dictionary should contain
+   '"_connection": "usb"' to tell LAVA it's USB device.
+
+ [{'ID_SERIAL_SHORT': 'S_NO62200001', '_connection': 'usb'}]
+
 .. caution:: Ensure that the ``static_info`` relates to a USB device which is
    attached to the same worker as the DUT but is **not** a DUT itself.
 
-If using multiple keys for the same ``device_info``, ensure that the key value
+If using multiple keys for the same ``static_info``, ensure that the key value
 pairs are in a single dictionary within the list of dictionaries::
 
- {% set static_info = [{'board_id': '0123456789'}, {'board_id': 'adsd0978775', 'usb_vendor_id': 'ACME54321'}] %}
+ {% set static_info = [{'ID_SERIAL_SHORT': '0123456789', '_connection': 'usb'},
+ {'ID_SERIAL_SHORT': 'adsd0978775', 'ID_VENDOR_ID': 'ACME54321', '_connection': 'usb'}] %}
 
 .. note:: Devices which include a forward slash ``/`` in the serial number will have
    that replaced by an underscore when processed through ``pyudev``. e.g.::
 
     udev: ATTRS{serial}=="S/NO44440001"
     pydev: S_NO44440001
-    static_info: {% set static_info = [{'board_id': 'S_NO44440001'}] %}
+    static_info: {% set static_info = [{'ID_SERIAL_SHORT': 'S_NO44440001'}] %}
 
 .. note:: LAVA instances running systemd newer than build 232 (e.g.
    Buster) need to allow scripts called by ``udev`` rules to access the
@@ -183,6 +200,9 @@ LXC by using the associated test shell helpers.
 
 * **lava-probe-channel** - echoes the ``probe_channel`` specified in the device
   dictionary.
+
+.. note:: It is a good practice to include '"_connection": "ip"' in the static_info.
+   This helps to differentiate between different connection types.
 
   .. seealso:: https://github.com/ARM-software/lisa/wiki/Energy-Meters-Requirements#user-content-iiocapture---baylibre-acme-cape
 
