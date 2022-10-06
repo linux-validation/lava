@@ -544,6 +544,70 @@ class LavaSystemAPI(SystemAPI):
 
         user.groups.set(transformed_groups)
 
+    @check_staff
+    def get_all_users(self):
+        """
+        Name
+        ----
+        `system.get_all_users` ()
+
+        Description
+        -----------
+        Return all the users currently registered on this LAVA
+        instance.
+
+        This function requires staff access.
+
+        Arguments
+        ---------
+        None
+
+        Return value
+        ------------
+        An array of strings, giving the email field for each user
+        registered with this server.
+
+        """
+        return [f["email"] for f in list(User.objects.values("email")) if f["email"]]
+
+    @check_staff
+    def set_user_active(self, user, active):
+        """
+        Name
+        ----
+        `system.set_user_active` (`user`, `active`)
+
+        Description
+        -----------
+        Set the given user to being active (able to login when using
+        most Django authorization backends) or inactive (account is
+        frozen for most activities).
+
+        This function requires staff access.
+
+        Arguments
+        ---------
+        user: str
+            the email address of the user whose activity is being set
+        active: bool
+            whether the user should be active (true) or inactive (false).
+            Inactive accounts are effectively locked.
+
+        Return value
+        ------------
+        None
+        """
+        try:
+            user = User.objects.get(email=user)
+        except User.DoesNotExist:
+            raise xmlrpc.client.Fault(errors.NOT_FOUND, "user does not exist")
+
+        if not isinstance(active, bool):
+            raise xmlrpc.client.Fault(errors.BAD_REQUEST, "active must be a boolean")
+
+        user.is_active = active
+        user.save(update_fields=["is_active"])
+
     @check_perm("lava_scheduler_app.change_devicetype")
     def assign_perm_device_type(self, perm, device_type, group):
         """
