@@ -19,8 +19,9 @@
 # with this program; if not, see <http://www.gnu.org/licenses>.
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 from tests.lava_dispatcher.test_basic import Factory, StdoutTestCase
-from unittest.mock import patch, MagicMock
 
 
 class DockerFactory(Factory):
