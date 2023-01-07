@@ -42,7 +42,7 @@ class TestDocker(StdoutTestCase):
 
     def test_pipeline(self):
         description_ref = self.pipeline_reference("docker-interactive.yaml", self.job)
-        self.assertEqual(description_ref, self.job.pipeline.describe(False))
+        self.assertEqual(description_ref, self.job.pipeline.describe())
 
     @patch(
         "lava_dispatcher.actions.deploy.docker.which",
