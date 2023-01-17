@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with LAVA.  If not, see <http://www.gnu.org/licenses/>.
 
+from django.conf import settings
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -249,38 +250,37 @@ class RestrictedTestJobQuerySet(RestrictedObjectQuerySet):
             # public and if yes, we check for accessibility of either
             # actual_device or requested_device_type (depending on whether the
             # job is scheduled or not.
-            vg_ids = TestJob.objects.filter(viewing_groups__isnull=False)
-            filters |= (
-                Q(is_public=True)
-                & ~Q(id__in=vg_ids)
-                & (
-                    (
-                        Q(actual_device__isnull=False)
-                        & Q(actual_device__in=accessible_devices)
-                    )
-                    | (
-                        Q(actual_device__isnull=True)
-                        & Q(requested_device_type__in=accessible_device_types)
-                    )
+
+            filters |= Q(is_public=True) & (
+                (
+                    Q(actual_device__isnull=False)
+                    & Q(actual_device__in=accessible_devices)
+                )
+                | (
+                    Q(actual_device__isnull=True)
+                    & Q(requested_device_type__in=accessible_device_types)
                 )
             )
+            if settings.PERMISSION_VIEWING_GROUPS_ENABLED:
+                vg_ids = TestJob.objects.filter(viewing_groups__isnull=False)
+                filters &= ~Q(id__in=vg_ids)
 
-            # Add viewing_groups filter.
-            if perm == self.model.VIEW_PERMISSION and user.is_authenticated:
-                # Anonymous user can never be a part of the group
-                # No point in adding viewing_groups filter as
-                # it will only slowdown server.
+                # Add viewing_groups filter.
+                if perm == self.model.VIEW_PERMISSION and user.is_authenticated:
+                    # Anonymous user can never be a part of the group
+                    # No point in adding viewing_groups filter as
+                    # it will only slowdown server.
 
-                # Needed to determine if viewing_groups is subset of all users
-                # groups, so remove all jobs where any viewing group is in groups
-                # this user is not part of.
-                nonuser_groups = Group.objects.exclude(
-                    pk__in=[g.id for g in user.groups.all()]
-                )
-                # NOTE: Only the last two conditions will be ANDed. Keep in mind if
-                # another filter needs to be added in between this one and the one
-                # before.
-                filters |= Q(id__in=vg_ids) & ~Q(viewing_groups__in=nonuser_groups)
+                    # Needed to determine if viewing_groups is subset of all users
+                    # groups, so remove all jobs where any viewing group is in groups
+                    # this user is not part of.
+                    nonuser_groups = Group.objects.exclude(
+                        pk__in=[g.id for g in user.groups.all()]
+                    )
+                    # NOTE: Only the last two conditions will be ANDed. Keep in mind if
+                    # another filter needs to be added in between this one and the one
+                    # before.
+                    filters |= Q(id__in=vg_ids) & ~Q(viewing_groups__in=nonuser_groups)
 
             return self.filter(filters)
 
