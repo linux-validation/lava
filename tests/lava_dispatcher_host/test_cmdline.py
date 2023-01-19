@@ -92,6 +92,7 @@ def test_share_device(mocker):
             "devices",
             "share",
             "foo/bar",
+            "--dev-path=foo",
             "--serial-number=01234567890",
         ]
     )
@@ -99,7 +100,29 @@ def test_share_device(mocker):
     assert share_device_with_container.call_count == 1
     args = share_device_with_container.call_args[0][0]
     assert args.device == "foo/bar"
+    assert args.dev_path == "foo"
     assert args.serial_number == "01234567890"
+
+
+def test_unshare_device(mocker):
+    unshare_device_with_container = mocker.patch(
+        "lava_dispatcher_host.cmdline.unshare_device_with_container"
+    )
+
+    main(
+        [
+            "lava-dispatcher-host",
+            "devices",
+            "unshare",
+            "foo/bar",
+            "--dev-path=foo",
+        ]
+    )
+
+    assert unshare_device_with_container.call_count == 1
+    args = unshare_device_with_container.call_args[0][0]
+    assert args.device == "foo/bar"
+    assert args.dev_path == "foo"
 
 
 def test_map_device(mocker):

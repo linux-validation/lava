@@ -26,21 +26,27 @@ import os
 import socket
 from argparse import Namespace
 
-from lava_dispatcher_host import share_device_with_container
+from lava_dispatcher_host import (
+    share_device_with_container,
+    unshare_device_with_container,
+)
 
 SOCKET = "/run/lava-dispatcher-host.sock"
 
 logger = logging.getLogger()
 
 
-class ShareCommand:
+class Command:
     def __init__(self, **options):
         self.options = Namespace(**options)
 
 
 class CommandHandler:
-    def handle(self, command: ShareCommand):
-        share_device_with_container(command.options)
+    def handle(self, command: Command):
+        if command.options.type == "share":
+            share_device_with_container(command.options)
+        else:
+            unshare_device_with_container(command.options)
 
 
 class ServerWrapper:
@@ -77,7 +83,7 @@ class ServerWrapper:
         result = None
 
         try:
-            command = ShareCommand(**json.loads(request))
+            command = Command(**json.loads(request))
         except (TypeError, json.decoder.JSONDecodeError):
             result = b'{"result": "INVALID_REQUEST"}\n'
 
