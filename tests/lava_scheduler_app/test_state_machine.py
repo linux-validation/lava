@@ -741,10 +741,8 @@ class TestTestJobStateMachine(TestCase):
         self.assertEqual(self.sub_job2.state, TestJob.STATE_RUNNING)
 
     def test_job_remove_job(self):
-        self.device.state = Device.STATE_RUNNING
-        self.device.save()
-        self.job.state = TestJob.STATE_RUNNING
         self.job.actual_device = self.device
+        self.job.go_state_running()
         self.job.save()
         self.assertEqual(self.device.hostname, self.job.actual_device.hostname)
         self.assertEqual(self.job.id, self.device.current_job.id)
