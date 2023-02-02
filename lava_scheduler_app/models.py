@@ -613,28 +613,20 @@ class Device(RestrictedObject):
         help_text=("Is this device synced from device dictionary or manually created."),
     )
 
+    current_job = models.OneToOneField(
+        "TestJob",
+        null=True,
+        blank=True,
+        default=None,
+        on_delete=models.SET_NULL,
+    )
+
     def __str__(self):
         return "%s (%s, health %s)" % (
             self.hostname,
             self.get_state_display(),
             self.get_health_display(),
         )
-
-    def current_job(self):
-        # This method will use the 'running_jobs' attribute if present which
-        # is a prefetch_related attribute containing non-finished jobs
-        # ie. Prefetch('testjobs', queryset=TestJob.objects.filter(~Q(state=TestJob.STATE_FINISHED)), to_attr='running_jobs')
-        try:
-            return self.running_jobs[0]
-        except AttributeError:
-            try:
-                return self.testjobs.select_related("submitter").get(
-                    ~Q(state=TestJob.STATE_FINISHED)
-                )
-            except TestJob.DoesNotExist:
-                return None
-        except IndexError:
-            return None
 
     def get_absolute_url(self):
         return reverse("lava.scheduler.device.detail", args=[self.pk])
@@ -724,15 +716,18 @@ class Device(RestrictedObject):
     def testjob_signal(self, signal, job, infrastructure_error=False):
         if signal == "go_state_scheduling":
             self.state = Device.STATE_RESERVED
+            self.current_job = job
 
         elif signal == "go_state_scheduled":
             self.state = Device.STATE_RESERVED
+            self.current_job = job
 
         elif signal == "go_state_running":
             self.state = Device.STATE_RUNNING
+            self.current_job = job
 
         elif signal == "go_state_canceling":
-            pass
+            self.current_job = None  # Prevent simultaneous cancels
 
         elif signal == "go_state_finished":
             pk = job.pk
@@ -746,6 +741,7 @@ class Device(RestrictedObject):
             )
 
             self.state = Device.STATE_IDLE
+            self.current_job = None
 
             prev_health_display = self.get_health_display()
             if job.health_check:

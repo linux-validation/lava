@@ -302,7 +302,7 @@ class SchedulerAPI(ExposedV2API):
         )
 
         def job_pk(device):
-            job = device.current_job()
+            job = device.current_job
             return job.pk if job else None
 
         return [
@@ -599,7 +599,7 @@ class SchedulerAPI(ExposedV2API):
             device_dict["offline_by"] = None
             device_dict["is_pipeline"] = True
 
-            current_job = device.current_job()
+            current_job = device.current_job
             if current_job is not None:
                 device_dict["job"] = current_job.pk
         else:

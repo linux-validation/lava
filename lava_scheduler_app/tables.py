@@ -71,7 +71,7 @@ class ExpandedStatusColumn(tables.Column):
         with no current job.
         """
         if record.state == Device.STATE_RUNNING:
-            current_job = record.current_job()
+            current_job = record.current_job
             if current_job:
                 return format_html(
                     "Running #{} {} [{}]",
@@ -82,7 +82,7 @@ class ExpandedStatusColumn(tables.Column):
             else:
                 return "Running"
         elif record.state == Device.STATE_RESERVED:
-            current_job = record.current_job()
+            current_job = record.current_job
             if current_job:
                 return format_html(
                     'Reserved for {} ({}) "{}" [{}]',

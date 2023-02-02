@@ -10,7 +10,6 @@ import yaml
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, Q
 
 from lava_common.yaml import yaml_safe_load
 from lava_scheduler_app.api import check_perm
@@ -19,7 +18,6 @@ from lava_scheduler_app.models import (
     DeviceType,
     GroupDevicePermission,
     Tag,
-    TestJob,
     Worker,
 )
 from lava_server.api import check_staff
@@ -226,14 +224,7 @@ class SchedulerDevicesAPI(ExposedV2API):
         devices = (
             Device.objects.all()
             .visible_by_user(self.user)
-            .select_related("device_type")
-            .prefetch_related(
-                Prefetch(
-                    "testjobs",
-                    queryset=TestJob.objects.filter(~Q(state=TestJob.STATE_FINISHED)),
-                    to_attr="running_jobs",
-                )
-            )
+            .select_related("device_type", "current_job")
         )
         if not show_all:
             devices = devices.exclude(health=Device.HEALTH_RETIRED)
@@ -241,7 +232,7 @@ class SchedulerDevicesAPI(ExposedV2API):
 
         ret = []
         for device in devices:
-            current_job = device.current_job()
+            current_job = device.current_job
             device_dict = {
                 "hostname": device.hostname,
                 "type": device.device_type.name,
@@ -325,7 +316,7 @@ class SchedulerDevicesAPI(ExposedV2API):
                 403, "Device '%s' not available to user '%s'." % (hostname, self.user)
             )
 
-        current_job = device.current_job()
+        current_job = device.current_job
         device_dict = {
             "hostname": device.hostname,
             "device_type": device.device_type.name,
