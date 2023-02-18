@@ -1167,6 +1167,9 @@ def _create_pipeline_job(
             viewing_groups = [group]
     elif isinstance(param, dict):
         if "group" in param:
+            if not settings.PERMISSION_VIEWING_GROUPS_ENABLED:
+                raise SubmissionException("Viewing groups are disabled.")
+
             viewing_groups = list(Group.objects.filter(name__in=param["group"]))
             if not viewing_groups:
                 raise SubmissionException(

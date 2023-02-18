@@ -276,6 +276,9 @@ MASTER_UPGRADE_NOTIFY = False
 WORKER_AUTO_REGISTER = True
 WORKER_AUTO_REGISTER_NETMASK = ["127.0.0.0/8", "::1"]
 
+# Permissions settings
+PERMISSION_VIEWING_GROUPS_ENABLED = True
+
 ###################
 # Celerey setting #
 ###################
@@ -353,6 +356,7 @@ def update(values):
     STATEMENT_TIMEOUT = values.get("STATEMENT_TIMEOUT")
     USE_DEBUG_TOOLBAR = values.get("USE_DEBUG_TOOLBAR")
     REQUIRE_LOGIN = values.get("REQUIRE_LOGIN")
+    PERMISSION_VIEWING_GROUPS_ENABLED = values.get("PERMISSION_VIEWING_GROUPS_ENABLED")
 
     # Fix mount point
     # Remove the leading slash and keep only one trailing slash

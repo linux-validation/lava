@@ -239,6 +239,28 @@ class TestTestJob(TestCaseWithFactory):
             DevicesUnavailableException, testjob_submission, definition, user, None
         )
 
+    def test_viewing_groups_disabled(self):
+        self.factory.cleanup()
+        user = self.factory.make_user()
+        self.factory.make_group("test_group")
+        dt = self.factory.make_device_type(name="qemu")
+        device = self.factory.make_device(device_type=dt, hostname="qemu-1")
+        device.save()
+        alias_name = "qemu_foo"
+        self.factory.make_device_type_alias(dt, name=alias_name)
+        definition = self.factory.make_job_data_from_file(
+            "qemu-foo-viewing-groups.yaml"
+        )
+        from lava_scheduler_app.schema import SubmissionException
+
+        with self.settings(PERMISSION_VIEWING_GROUPS_ENABLED=False):
+            with self.assertRaisesRegex(
+                SubmissionException, "Viewing groups are disabled"
+            ):
+                testjob_submission(definition, user, None)
+
+        testjob_submission(definition, user, None)
+
 
 class TestNotifications(TestCaseWithFactory):
     def test_notification_callback_get(self):
