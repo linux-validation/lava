@@ -1333,6 +1333,11 @@ class TestJob(models.Model):
     class Meta:
         index_together = ["health", "state", "requested_device_type"]
         default_permissions = ("change", "delete")
+        indexes = (
+            models.Index(fields=("-submit_time",)),
+            models.Index(fields=("-start_time",)),
+            models.Index(fields=("-end_time",)),
+        )
 
     # Permission strings. Not real permissions.
     VIEW_PERMISSION = "lava_scheduler_app.view_testjob"
@@ -1430,7 +1435,10 @@ class TestJob(models.Model):
     )
 
     submit_time = models.DateTimeField(
-        verbose_name=_("Submit time"), auto_now=False, auto_now_add=True, db_index=True
+        verbose_name=_("Submit time"),
+        auto_now=False,
+        auto_now_add=True,
+        db_index=False,  # Descending index defined in Meta
     )
     start_time = models.DateTimeField(
         verbose_name=_("Start time"),
@@ -1439,6 +1447,7 @@ class TestJob(models.Model):
         null=True,
         blank=True,
         editable=False,
+        db_index=False,  # Descending index defined in Meta
     )
     end_time = models.DateTimeField(
         verbose_name=_("End time"),
@@ -1447,6 +1456,7 @@ class TestJob(models.Model):
         null=True,
         blank=True,
         editable=False,
+        db_index=False,  # Descending index defined in Meta
     )
 
     @property
