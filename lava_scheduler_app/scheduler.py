@@ -244,11 +244,17 @@ def schedule_health_check(device, definition):
 def schedule_jobs(logger, available_devices, workers):
     logger.info("scheduling jobs:")
     dts = list(available_devices.keys())
-    for dt in DeviceType.objects.filter(name__in=dts).order_by("name"):
-        with transaction.atomic():
-            schedule_jobs_for_device_type(
-                logger, dt, available_devices[dt.name], workers
-            )
+    dts_query = DeviceType.objects.filter(name__in=dts).order_by("name")
+    devices = Device.objects.filter(device_type__in=dts_query).select_for_update()
+    devices = filter_devices(devices, workers)
+    devices = devices.filter(health__in=[Device.HEALTH_GOOD, Device.HEALTH_UNKNOWN])
+    # Add a random sort: with N devices and num(jobs) < N, if we don't sort
+    # randomly, the same devices will always be used while the others will
+    # never be used.
+    devices = devices.order_by("?")
+
+    with transaction.atomic():
+        schedule_jobs_for_all_device_type(logger, devices, available_devices, workers)
 
     with transaction.atomic():
         # Transition multinode if needed
@@ -257,15 +263,7 @@ def schedule_jobs(logger, available_devices, workers):
     logger.info("done")
 
 
-def schedule_jobs_for_device_type(logger, dt, available_devices, workers):
-    devices = dt.device_set.select_for_update()
-    devices = filter_devices(devices, workers)
-    devices = devices.filter(health__in=[Device.HEALTH_GOOD, Device.HEALTH_UNKNOWN])
-    # Add a random sort: with N devices and num(jobs) < N, if we don't sort
-    # randomly, the same devices will always be used while the others will
-    # never be used.
-    devices = devices.order_by("?")
-
+def schedule_jobs_for_all_device_type(logger, devices, available_devices, workers):
     workers_limit = worker_summary()
 
     print_header = True
