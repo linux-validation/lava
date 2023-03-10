@@ -17,19 +17,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with LAVA.  If not, see <http://www.gnu.org/licenses/>.
 
-import contextlib
 import datetime
-import json
 import signal
 import time
-from typing import Set
 
-import zmq
-from django.conf import settings
 from django.db import connection, transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
-from zmq.utils.strtypes import b, u
 
 from lava_common.version import __version__
 from lava_scheduler_app.models import Worker
@@ -52,37 +46,6 @@ class Command(LAVADaemonCommand):
     help = "LAVA scheduler"
     default_logfile = "/var/log/lava-server/lava-scheduler.log"
 
-    def add_arguments(self, parser):
-        super().add_arguments(parser)
-        net = parser.add_argument_group("network")
-        net.add_argument(
-            "--event-url", default="tcp://localhost:5500", help="URL of the publisher"
-        )
-        net.add_argument(
-            "--ipv6",
-            default=False,
-            action="store_true",
-            help="Enable IPv6 for zmq event stream",
-        )
-
-    def check_workers(self):
-        query = Worker.objects.select_for_update()
-        query = query.filter(state=Worker.STATE_ONLINE)
-        query = query.filter(
-            last_ping__lt=timezone.now() - datetime.timedelta(seconds=PING_TIMEOUT)
-        )
-        for worker in query:
-            self.logger.info("Worker <%s> is now offline", worker.hostname)
-            worker.go_state_offline()
-            worker.save()
-
-        return [
-            w.hostname
-            for w in Worker.objects.filter(
-                state=Worker.STATE_ONLINE, health=Worker.HEALTH_ACTIVE
-            )
-        ]
-
     def handle(self, *args, **options):
         # Initialize logging.
         self.setup_logging(
@@ -98,25 +61,12 @@ class Command(LAVADaemonCommand):
             return
 
         self.logger.info("[INIT] Connect to event stream")
-        self.logger.debug("[INIT] -> %r", options["event_url"])
-        self.context = zmq.Context()
-        self.sub = self.context.socket(zmq.SUB)
-        self.logger.debug("[INIT] -> %r", settings.EVENT_TOPIC)
-        self.sub.setsockopt(zmq.SUBSCRIBE, b(settings.EVENT_TOPIC))
-        if options["ipv6"]:
-            self.logger.info("[INIT] -> enable IPv6")
-            self.sub.setsockopt(zmq.IPV6, 1)
-        self.sub.connect(options["event_url"])
 
         # Every signals should raise a KeyboardInterrupt
         def signal_handler(*_):
             raise KeyboardInterrupt
 
         signal.signal(signal.SIGTERM, signal_handler)
-
-        # Create a poller
-        self.poller = zmq.Poller()
-        self.poller.register(self.sub, zmq.POLLIN)
 
         # Main loop
         self.logger.info("[INIT] Starting main loop")
@@ -127,39 +77,26 @@ class Command(LAVADaemonCommand):
         except Exception as exc:
             self.logger.error("[CLOSE] Unknown exception raised, leaving!")
             self.logger.exception(exc)
-        self.sub.close(linger=0)
-        self.context.term()
 
-    def get_available_dts(self) -> Set[str]:
-        device_types: Set[str] = set()
-        with contextlib.suppress(KeyError, zmq.ZMQError):
-            while True:
-                msg = self.sub.recv_multipart(zmq.NOBLOCK)
-                try:
-                    (topic, _, dt, username, data) = (u(m) for m in msg)
-                    data = json.loads(data)
-                except UnicodeDecodeError:
-                    self.logger.error("Invalid event: can't be decoded")
-                    continue
-                except ValueError:
-                    self.logger.error("Invalid event: %s", msg)
-                    continue
+    def check_workers(self):
+        query = Worker.objects.select_for_update()
+        query = query.filter(state=Worker.STATE_ONLINE)
+        query = query.filter(
+            last_ping__lt=timezone.now() - datetime.timedelta(seconds=PING_TIMEOUT)
+        )
+        for worker in query:
+            self.logger.info(f"Worker <{worker.hostname}> is now offline")
+            worker.go_state_offline()
+            worker.save()
 
-                if topic.endswith(".testjob"):
-                    if data["state"] == "Submitted":
-                        device_types.add(data["device_type"])
-                elif topic.endswith(".device"):
-                    if data["state"] == "Idle" and data["health"] in [
-                        "Good",
-                        "Unknown",
-                        "Looping",
-                    ]:
-                        device_types.add(data["device_type"])
-
-        return device_types
+        return [
+            w.hostname
+            for w in Worker.objects.filter(
+                state=Worker.STATE_ONLINE, health=Worker.HEALTH_ACTIVE
+            )
+        ]
 
     def main_loop(self) -> None:
-        dts: Set[str] = set()
         while True:
             begin = time.monotonic()
             try:
@@ -168,15 +105,9 @@ class Command(LAVADaemonCommand):
                     workers = self.check_workers()
 
                 # Schedule jobs
-                schedule(self.logger, dts, workers)
-                dts = set()
+                schedule(self.logger, workers)
 
-                # Wait for events
-                while not dts and (time.monotonic() - begin) < INTERVAL:
-                    timeout = max(INTERVAL - (time.monotonic() - begin), 0)
-                    with contextlib.suppress(zmq.ZMQError):
-                        self.poller.poll(max(timeout * 1000, 1))
-                    dts = self.get_available_dts()
+                time.sleep(max(INTERVAL - (time.monotonic() - begin), 0))
 
             except (OperationalError, InterfaceError):
                 self.logger.info("[RESET] database connection reset.")
