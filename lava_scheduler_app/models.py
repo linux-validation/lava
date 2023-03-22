@@ -2435,6 +2435,12 @@ class TestJobUser(models.Model):
         return ""
 
 
+@nottest
+class TestJobViewingGroups(models.Model):
+    group = models.ForeignKey(Group, on_delete=models.CASCADE)
+    testjob = models.ForeignKey(TestJob, on_delete=models.CASCADE)
+
+
 class GroupDeviceTypePermission(GroupObjectPermission):
     class Meta:
         unique_together = ("group", "permission", "devicetype")
