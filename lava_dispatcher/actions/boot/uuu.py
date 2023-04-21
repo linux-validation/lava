@@ -234,8 +234,8 @@ Following actions will be skipped :
     def eval_otg_path(self):
         uuu_options = self.job.device["actions"]["boot"]["methods"]["uuu"]["options"]
 
-        # Match example : "2:112"
-        otg_path_fsm = re.compile(r"\d+:\d+")
+        # Match example : "2:112" or "2:112 -m 1:112"
+        otg_path_fsm = re.compile(r"\d+:\d+(\s+-m\s+\d+:\d+)?")
 
         if otg_path_fsm.fullmatch(uuu_options.get("usb_otg_path")):
             return uuu_options.get("usb_otg_path")
