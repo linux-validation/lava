@@ -42,6 +42,9 @@ class UUUBootFactory(Factory):  # pylint: disable=too-few-public-methods
     def create_imx8mq_job_uuu_path_from_command(self, filename):
         return self.create_job("imx8mq-evk-03.jinja2", filename)
 
+    def create_imx8mq_job_usb3_uuu_path(self, filename):
+        return self.create_job("imx8mq-evk-04.jinja2", filename)
+
     def create_imx8dxlevk_job(self, filename):
         return self.create_job("imx8dxl-evk-01.jinja2", filename)
 
@@ -111,6 +114,18 @@ class TestUUUbootAction(StdoutTestCase):  # pylint: disable=too-many-public-meth
                     "options"
                 ]["usb_otg_path"],
             )
+
+    def test_pipeline_usb3_uuu_path(self):
+        job = self.factory.create_imx8mq_job_usb3_uuu_path(
+            "sample_jobs/uuu-bootimage-only.yaml"
+        )
+        self.assertIsNotNone(job)
+
+        # Test that generated pipeline is the same as defined in pipeline_refs
+        description_ref = self.pipeline_reference("uuu-bootimage-only.yaml", job=job)
+        self.assertEqual(description_ref, job.pipeline.describe())
+
+        self.assertIsNone(job.validate())
 
     def test_pipeline_uuu_boot_action_bcu_configured(self):
         job = self.factory.create_imx8dxlevk_job("sample_jobs/uuu_enhancement.yaml")
