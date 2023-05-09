@@ -34,6 +34,10 @@ from lava_dispatcher_host.action import DeviceContainerMappingMixin
 class OptionalContainerAction(Action, DeviceContainerMappingMixin):
     command_exception = InfrastructureError
 
+    def __init__(self):
+        super().__init__()
+        self._driver = None
+
     def validate(self):
         super().validate()
         key = self.driver.key
@@ -49,17 +53,17 @@ class OptionalContainerAction(Action, DeviceContainerMappingMixin):
 
     @property
     def driver(self):
-        __driver__ = getattr(self, "__driver__", None)
-        if not __driver__:
+        if self._driver is None:
             lxc = is_lxc_requested(self.job)
             if lxc:
-                self.__driver__ = LxcDriver(self, lxc)
+                self._driver = LxcDriver(self, lxc)
             elif "docker" in self.parameters:
                 params = self.parameters["docker"]
-                self.__driver__ = DockerDriver(self, params)
+                self._driver = DockerDriver(self, params)
             else:
-                self.__driver__ = NullDriver(self)
-        return self.__driver__
+                self._driver = NullDriver(self)
+
+        return self._driver
 
     def maybe_copy_to_container(self, src):
         return self.driver.maybe_copy_to_container(src)
@@ -139,7 +143,7 @@ class DockerDriver(NullDriver):
 
         if not self.docker_options:
             for f in self.copied_files:
-                docker.bind_mount(f)
+                docker.add_bind_mount(f)
         return docker
 
     def get_command_prefix(self):
@@ -149,10 +153,10 @@ class DockerDriver(NullDriver):
     def run(self, cmd):
         docker = self.build(DockerContainer)
         name = self.get_container_name()
-        docker.name(name)
+        docker.set_container_name(name)
         docker.start(self.action)
         try:
-            self.__map_devices__(name)
+            self._map_devices(name)
             docker.run(cmd, self.action)
         finally:
             docker.stop()
@@ -161,10 +165,10 @@ class DockerDriver(NullDriver):
         # FIXME duplicates most of run()
         docker = self.build(DockerContainer)
         name = self.get_container_name()
-        docker.name(name)
+        docker.set_container_name(name)
         docker.start(self.action)
         try:
-            self.__map_devices__(name)
+            self._map_devices(name)
             return docker.get_output(cmd, self.action)
         finally:
             docker.stop()
@@ -174,14 +178,14 @@ class DockerDriver(NullDriver):
             self.copied_files.append(src)
         return src
 
-    def __map_devices__(self, container_name):
+    def _map_devices(self, container_name):
         action = self.action
         action.add_device_container_mappings(container_name, "docker")
-        for dev in self.__get_device_nodes__():
+        for dev in self._get_device_nodes():
             if not os.path.islink(dev):
                 action.trigger_share_device_with_container(dev)
 
-    def __get_device_nodes__(self):
+    def _get_device_nodes(self):
         device_info = self.action.job.device.get("device_info", {})
         if device_info:
             return get_udev_devices(device_info=device_info)

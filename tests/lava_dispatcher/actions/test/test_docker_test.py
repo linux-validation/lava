@@ -80,7 +80,7 @@ def test_detect_correct_action(action):
 
 
 def test_run(action, mocker):
-    mocker.patch("lava_dispatcher.utils.containers.DockerDriver.__get_device_nodes__")
+    mocker.patch("lava_dispatcher.utils.containers.DockerDriver._get_device_nodes")
     ShellCommand = mocker.patch("lava_dispatcher.actions.test.docker.ShellCommand")
     ShellSesssion = mocker.patch("lava_dispatcher.actions.test.docker.ShellSession")
     docker_connection = mocker.MagicMock()
@@ -180,31 +180,31 @@ def test_stages(first_test_action, second_test_action):
 def test_docker_test_shell_validate(action):
     action.validate()
     assert action.valid == True
-    [a.__errors__.clear() for a in action.pipeline.actions]
+    [a._errors.clear() for a in action.pipeline.actions]
 
     action.job.parameters["dispatcher"]["test_docker_bind_mounts"] = [
         ["foo", "bar", "rw"]
     ]
     action.validate()
     assert action.valid == True
-    [a.__errors__.clear() for a in action.pipeline.actions]
+    [a._errors.clear() for a in action.pipeline.actions]
 
     action.job.parameters["dispatcher"]["test_docker_bind_mounts"] = [["foo"]]
     action.validate()
     assert action.valid == False
-    [a.__errors__.clear() for a in action.pipeline.actions]
+    [a._errors.clear() for a in action.pipeline.actions]
 
     action.job.parameters["dispatcher"]["test_docker_bind_mounts"] = [[["foo"], "bar"]]
     action.validate()
     assert action.valid == False
-    [a.__errors__.clear() for a in action.pipeline.actions]
+    [a._errors.clear() for a in action.pipeline.actions]
 
     action.job.parameters["dispatcher"]["test_docker_bind_mounts"] = [
         ["foo", "bar", "foo"]
     ]
     action.validate()
     assert action.valid == False
-    [a.__errors__.clear() for a in action.pipeline.actions]
+    [a._errors.clear() for a in action.pipeline.actions]
 
 
 def test_multinode_docker_test_shell(action, multinode_action):

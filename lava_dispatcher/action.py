@@ -357,11 +357,11 @@ class Action:
         # subsequently except by RetryCommand.
         self.level = None
         self.pipeline = None
-        self.__parameters__ = {}
-        self.__errors__ = []
+        self._parameters = {}
+        self._errors = []
         self.job = None
         self.logger = logging.getLogger("dispatcher")
-        self.__results__ = {}
+        self._results = {}
         self.timeout = Timeout(self.name, exception=self.timeout_exception)
         # unless the strategy or the job parameters change this, do not retry
         self.max_retries = 1
@@ -414,14 +414,14 @@ class Action:
     @property
     def errors(self):
         if self.pipeline:
-            return self.__errors__ + self.pipeline.errors
+            return self._errors + self.pipeline.errors
         else:
-            return self.__errors__
+            return self._errors
 
     @errors.setter
     def errors(self, error):
         if error:
-            self.__errors__.append(error)
+            self._errors.append(error)
 
     @property
     def valid(self):
@@ -442,11 +442,11 @@ class Action:
         copied directly from the YAML. Dynamic data is held in
         the context available via the parent Pipeline()
         """
-        return self.__parameters__
+        return self._parameters
 
-    def __set_parameters__(self, data):
+    def _set_parameters(self, data):
         try:
-            self.__parameters__.update(data)
+            self._parameters.update(data)
         except ValueError:
             raise LAVABug("Action parameters need to be a dictionary")
 
@@ -487,7 +487,7 @@ class Action:
 
     @parameters.setter
     def parameters(self, data):
-        self.__set_parameters__(data)
+        self._set_parameters(data)
         if self.pipeline:
             for action in self.pipeline.actions:
                 action.parameters = self.parameters
@@ -497,12 +497,12 @@ class Action:
         """
         Updated dictionary of results for this action.
         """
-        return self.__results__
+        return self._results
 
     @results.setter
     def results(self, data):
         try:
-            self.__results__.update(data)
+            self._results.update(data)
         except ValueError:
             raise LAVABug("Action results need to be a dictionary")
 
