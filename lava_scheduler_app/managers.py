@@ -150,7 +150,7 @@ class RestrictedObjectQuerySet(QuerySet):
                 permissions__group__user=user,
             )
 
-        return self.filter(filters)
+        return self.filter(filters).distinct()
 
 
 class RestrictedWorkerQuerySet(RestrictedObjectQuerySet):
