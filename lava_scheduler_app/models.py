@@ -1303,6 +1303,15 @@ class TestJob(models.Model):
     class Meta:
         index_together = ["health", "state", "requested_device_type"]
         default_permissions = ("change", "delete")
+        indexes = (
+            models.Index(
+                name="device_type_jobs_index",
+                fields=("requested_device_type", "-submit_time"),
+            ),
+            models.Index(
+                name="device_jobs_index", fields=("actual_device", "-submit_time")
+            ),
+        )
 
     # Permission strings. Not real permissions.
     VIEW_PERMISSION = "lava_scheduler_app.view_testjob"
