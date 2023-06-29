@@ -1303,6 +1303,16 @@ class TestJob(models.Model):
     class Meta:
         index_together = ["health", "state", "requested_device_type"]
         default_permissions = ("change", "delete")
+        indexes = (
+            models.Index(
+                fields=("actual_device",),
+                condition=(
+                    ~Q(state=5)  # HACK: refers to TestJob.STATE_FINISHED
+                    & Q(actual_device__isnull=False)
+                ),
+                name="current_job_prefetch_index",
+            ),
+        )
 
     # Permission strings. Not real permissions.
     VIEW_PERMISSION = "lava_scheduler_app.view_testjob"
