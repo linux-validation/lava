@@ -96,7 +96,7 @@ class TestHealthCheckScheduling(TestCase):
     def _check_hc_scheduled(self, device):
         device.refresh_from_db()
         self.assertEqual(device.state, Device.STATE_RESERVED)
-        job = device.current_job()
+        job = device.current_job
         self.assertNotEqual(job, None)
         self.assertEqual(job.state, TestJob.STATE_SCHEDULED)
         self.assertEqual(job.health, TestJob.HEALTH_UNKNOWN)
@@ -105,7 +105,7 @@ class TestHealthCheckScheduling(TestCase):
     def _check_hc_not_scheduled(self, device):
         device.refresh_from_db()
         self.assertEqual(device.state, Device.STATE_IDLE)
-        self.assertEqual(device.current_job(), None)
+        self.assertEqual(device.current_job, None)
 
     def test_without_health_checks(self):
         # Make sure that get_health_check does return None
@@ -148,7 +148,7 @@ class TestHealthCheckScheduling(TestCase):
         self.device04.refresh_from_db()
         self.assertFalse(self.device04.is_valid())
         self.assertEqual(self.device04.health, Device.HEALTH_BAD)
-        self.assertIsNone(self.device04.current_job())
+        self.assertIsNone(self.device04.current_job)
 
     def test_without_previous_hc_device_health_unknown(self):
         # Make sure that get_health_check does return something
@@ -301,7 +301,7 @@ class TestHealthCheckScheduling(TestCase):
         self.device03.refresh_from_db()
         j.refresh_from_db()
         self.assertEqual(j.state, TestJob.STATE_SUBMITTED)
-        current_hc = self.device03.current_job()
+        current_hc = self.device03.current_job
         self.assertTrue(current_hc.health_check)
         self.assertEqual(current_hc.state, TestJob.STATE_SCHEDULED)
 
@@ -354,7 +354,7 @@ class TestHealthCheckScheduling(TestCase):
         self.device03.refresh_from_db()
         jobs = TestJob.objects.filter(state=TestJob.STATE_SUBMITTED)
         self.assertEqual(jobs.count(), 1)
-        current_hc = self.device03.current_job()
+        current_hc = self.device03.current_job
         self.assertTrue(current_hc.health_check)
         self.assertEqual(current_hc.state, TestJob.STATE_SCHEDULED)
 
@@ -421,7 +421,7 @@ actions: []
     def _check_hc_scheduled(self, device):
         device.refresh_from_db()
         self.assertEqual(device.state, Device.STATE_RESERVED)
-        job = device.current_job()
+        job = device.current_job
         self.assertNotEqual(job, None)
         self.assertEqual(job.state, TestJob.STATE_SCHEDULED)
         self.assertEqual(job.health, TestJob.HEALTH_UNKNOWN)
@@ -430,7 +430,7 @@ actions: []
     def _check_hc_not_scheduled(self, device):
         device.refresh_from_db()
         self.assertEqual(device.state, Device.STATE_IDLE)
-        self.assertEqual(device.current_job(), None)
+        self.assertEqual(device.current_job, None)
 
     def _check_initial_state(self):
         self.assertNotEqual(self.device01.get_health_check(), None)
@@ -593,7 +593,7 @@ class TestPriorities(TestCase):
         submitted = TestJob.objects.filter(state=TestJob.STATE_SUBMITTED)
         self.assertEqual(submitted.count(), len(jobs))
 
-        current_hc = self.device01.current_job()
+        current_hc = self.device01.current_job
         self.assertEqual(current_hc.state, TestJob.STATE_SCHEDULED)
         current_hc.go_state_finished(TestJob.HEALTH_COMPLETE)
         current_hc.save()

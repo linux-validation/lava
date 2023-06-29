@@ -741,18 +741,16 @@ class TestTestJobStateMachine(TestCase):
         self.assertEqual(self.sub_job2.state, TestJob.STATE_RUNNING)
 
     def test_job_remove_job(self):
-        self.device.state = Device.STATE_RUNNING
-        self.device.save()
-        self.job.state = TestJob.STATE_RUNNING
         self.job.actual_device = self.device
+        self.job.go_state_running()
         self.job.save()
         self.assertEqual(self.device.hostname, self.job.actual_device.hostname)
-        self.assertEqual(self.job.id, self.device.current_job().id)
+        self.assertEqual(self.job.id, self.device.current_job.id)
         self.device.refresh_from_db()
-        self.assertEqual(self.job.id, self.device.current_job().id)
+        self.assertEqual(self.job.id, self.device.current_job.id)
         self.job.delete()
         self.check_device(Device.STATE_IDLE, Device.HEALTH_UNKNOWN)
-        self.assertIsNone(self.device.current_job())
+        self.assertIsNone(self.device.current_job)
 
 
 class TestWorkerStateMachine(TestCase):

@@ -416,7 +416,7 @@ class Command(BaseCommand):
         config = device.load_configuration(output_format="raw")
         self.stdout.write("device-dict: %s" % bool(config))
         self.stdout.write("worker     : %s" % device.worker_host.hostname)
-        self.stdout.write("current_job: %s" % device.current_job())
+        self.stdout.write("current_job: %s" % device.current_job)
 
     def handle_list(self, state, health, show_all, format_as_csv):
         """Print devices list"""

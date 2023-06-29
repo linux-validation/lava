@@ -125,6 +125,10 @@ sast:
 codespell:
   <<: *analyze
 
+django_migrations:
+  <<: *analyze
+  image: hub.lavasoftware.org/lava/ci-images/amd64/server-debian-11
+
 #########
 # Build #
 #########

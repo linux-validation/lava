@@ -103,7 +103,7 @@ def device_post_handler(sender, **kwargs):
             "device_type": instance.device_type.name,
             "worker": None,
         }
-        current_job = instance.current_job()
+        current_job = instance.current_job
         if current_job is not None:
             data["job"] = current_job.display_id
             if instance.health == instance.HEALTH_RETIRED:

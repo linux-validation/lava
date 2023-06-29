@@ -27,7 +27,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.humanize.templatetags.humanize import naturaltime
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
 from django.db import transaction
-from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.utils import DatabaseError
 from django.http import (
     FileResponse,
@@ -297,21 +297,12 @@ class ActiveJobsTableView(JobTableView):
 
 class DeviceTableView(JobTableView):
     def get_queryset(self):
-        q = (
-            Device.objects.select_related("device_type", "worker_host")
+        return (
+            Device.objects.select_related("device_type", "worker_host", "current_job")
             .prefetch_related("tags")
             .visible_by_user(self.request.user)
             .order_by("hostname")
             .distinct()
-        )
-        return q.prefetch_related(
-            Prefetch(
-                "testjobs",
-                queryset=TestJob.objects.filter(
-                    ~Q(state=TestJob.STATE_FINISHED)
-                ).select_related("submitter"),
-                to_attr="running_jobs",
-            )
         )
 
 
@@ -722,21 +713,12 @@ class DeviceTypeOverView(JobTableView):
 
 class NoDTDeviceView(DeviceTableView):
     def get_queryset(self):
-        q = (
+        return (
             Device.objects.exclude(health=Device.HEALTH_RETIRED)
             .visible_by_user(self.request.user)
-            .select_related("device_type", "worker_host")
+            .select_related("device_type", "worker_host", "current_job")
             .prefetch_related("tags")
             .order_by("hostname")
-        )
-        return q.prefetch_related(
-            Prefetch(
-                "testjobs",
-                queryset=TestJob.objects.filter(
-                    ~Q(state=TestJob.STATE_FINISHED)
-                ).select_related("submitter"),
-                to_attr="running_jobs",
-            )
         )
 
 
