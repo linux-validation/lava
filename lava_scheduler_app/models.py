@@ -1303,6 +1303,13 @@ class TestJob(models.Model):
     class Meta:
         index_together = ["health", "state", "requested_device_type"]
         default_permissions = ("change", "delete")
+        indexes = (
+            models.Index(
+                fields=("requested_device_type", "id"),
+                name="job_queued_per_device_type_idx",
+                condition=Q(state=0),  # HACK: refers to TestJob.STATE_SUBMITTED
+            ),
+        )
 
     # Permission strings. Not real permissions.
     VIEW_PERMISSION = "lava_scheduler_app.view_testjob"
