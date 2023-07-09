@@ -23,9 +23,6 @@ debian:
     directory: /usr/share/javascript/jquery-flot/
     lava_directory: lava_results_app/static/lava_results_app/js/
     replacements:
-      jquery.flot.navigate.js: jquery.flot.navigate.js
-      jquery.flot.canvas.js: jquery.flot.canvas.js
-      jquery.flot.time.js: jquery.flot.time.js
       jquery.flot.js: jquery.flot.js
   - package: libjs-jquery-flot
     directory: /usr/share/javascript/jquery-flot/

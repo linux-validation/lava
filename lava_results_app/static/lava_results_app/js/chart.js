@@ -1118,7 +1118,7 @@ $(document).ready(function () {
 	        show: show_legend,
 	        position: "nw",
                 //            margin: [chart_width-40, 0],
-	        container: "#legend_container_" + this.chart_id,
+		//container: "#legend_container_" + this.chart_id,
 	        labelFormatter: function(label, series) {
                     label_hidden = "<input type='hidden' " +
                         "id='legend_" + series.test_id + "' " +
