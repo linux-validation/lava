@@ -87,7 +87,15 @@ class CreateOverlay(Action):
             glob.glob(os.path.join(self.lava_test_dir, "lava-*"))
         )
 
-        lava_test_results_dir = self.get_constant("lava_test_results_dir", "posix")
+        # Check the lava_test_results_dir value from job definition or else take the posix environment
+        results_dir_check = self.job.parameters.get("context", {}).get(
+            "lava_test_results_dir"
+        )
+        if results_dir_check:
+            lava_test_results_dir = results_dir_check
+        else:
+            lava_test_results_dir = self.get_constant("lava_test_results_dir", "posix")
+
         lava_test_results_dir = lava_test_results_dir % self.job.job_id
         self.set_namespace_data(
             action="test",
