@@ -120,7 +120,7 @@ class TestVland(StdoutTestCase):
         vprotocol.set_up()
         with open(self.filename) as sample_job_data:
             parser = JobParser()
-            job = parser.parse(sample_job_data, self.device, 4212, None, "")
+            job = parser.parse(sample_job_data, self.device, 4212, "", None, "")
         ret = vprotocol.configure(self.device, job)
         if not ret:
             print(vprotocol.errors)
@@ -181,7 +181,7 @@ class TestVland(StdoutTestCase):
         self.assertIn(VlandProtocol.name, alpha_data["protocols"])
         with open(self.filename) as sample_job_data:
             parser = JobParser()
-            job = parser.parse(sample_job_data, self.device, 4212, None, "")
+            job = parser.parse(sample_job_data, self.device, 4212, "", None, "")
         job.logger = DummyLogger()
         description_ref = self.pipeline_reference("bbb-group-vland-alpha.yaml", job=job)
         self.assertEqual(description_ref, job.pipeline.describe())
@@ -243,7 +243,7 @@ class TestVland(StdoutTestCase):
             alpha_data["protocols"][VlandProtocol.name], {"vlan_one": {"tags": []}}
         )
         parser = JobParser()
-        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, None, "")
+        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, "", None, "")
         job.logger = DummyLogger()
         job.validate()
         tftp_deploy = [
@@ -283,7 +283,7 @@ class TestVland(StdoutTestCase):
             alpha_data["protocols"][VlandProtocol.name], {"vlan_one": {"tags": []}}
         )
         parser = JobParser()
-        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, None, "")
+        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, "", None, "")
         job.logger = DummyLogger()
         job.validate()
         vprotocol = [
@@ -317,7 +317,7 @@ class TestVland(StdoutTestCase):
             {"vlan_one": {"tags": ["spurious"]}},
         )
         parser = JobParser()
-        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, None, "")
+        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, "", None, "")
         job.logger = DummyLogger()
         self.assertRaises(JobError, job.validate)
 
@@ -332,7 +332,7 @@ class TestVland(StdoutTestCase):
             if self.device["parameters"]["interfaces"][interface]["tags"] == []:
                 self.device["parameters"]["interfaces"][interface]["tags"] = None
         parser = JobParser()
-        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, None, "")
+        job = parser.parse(yaml_safe_dump(alpha_data), self.device, 4212, "", None, "")
         deploy = [
             action for action in job.pipeline.actions if action.name == "tftp-deploy"
         ][0]

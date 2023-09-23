@@ -212,7 +212,7 @@ class Factory:
         device = NewDevice(yaml_safe_load(data))
         try:
             parser = JobParser()
-            job = parser.parse(yaml_safe_dump(job_data), device, "4999", None, "")
+            job = parser.parse(yaml_safe_dump(job_data), device, "4999", "", None, "")
         except (ConfigurationError, TypeError) as exc:
             print("####### Parser exception ########")
             print(device)
@@ -246,7 +246,7 @@ class Factory:
         if validate:
             validate_job(job_data, strict=False)
         try:
-            job = parser.parse(yaml_safe_dump(job_data), device, 4212, None, "")
+            job = parser.parse(yaml_safe_dump(job_data), device, 4212, "", None, "")
             job.logger = DummyLogger()
         except LAVAError as exc:
             print(exc)
@@ -415,14 +415,14 @@ class TestPipeline(StdoutTestCase):
         parser = JobParser()
         (rendered, data) = factory.create_device("kvm01.jinja2")
         device = yaml_safe_load(rendered)
-        job = parser.parse(yaml_safe_dump(job_def), device, 4212, None, "")
+        job = parser.parse(yaml_safe_dump(job_def), device, 4212, "", None, "")
         self.assertIsNotNone(job)
         job_def["compatibility"] = job.compatibility + 1
         self.assertRaises(
-            JobError, parser.parse, yaml_safe_dump(job_def), device, 4212, None, ""
+            JobError, parser.parse, yaml_safe_dump(job_def), device, 4212, "", None, ""
         )
         job_def["compatibility"] = 0
-        job = parser.parse(yaml_safe_dump(job_def), device, 4212, None, "")
+        job = parser.parse(yaml_safe_dump(job_def), device, 4212, "", None, "")
         self.assertIsNotNone(job)
 
     def test_pipeline_actions(self):
