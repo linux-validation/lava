@@ -37,3 +37,4 @@ from lava_dispatcher.actions.boot.u_boot import UBoot
 from lava_dispatcher.actions.boot.uefi import UefiShell
 from lava_dispatcher.actions.boot.uefi_menu import UefiMenu
 from lava_dispatcher.actions.boot.uuu import UUUBoot
+from lava_dispatcher.actions.boot.ser_ctl import SerCtlBoot
