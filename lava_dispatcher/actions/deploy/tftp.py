@@ -59,8 +59,6 @@ class TftpAction(Action):
 
     def validate(self):
         super().validate()
-        if "kernel" not in self.parameters:
-            self.errors = "%s needs a kernel to deploy" % self.name
         if not self.valid:
             return
         if "nfsrootfs" in self.parameters and "persistent_nfs" in self.parameters:
