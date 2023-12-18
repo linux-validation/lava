@@ -343,6 +343,7 @@ class DeviceViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = (
         "hostname",
         "device_type",
+        "documentation_link",
         "device_version",
         "physical_owner",
         "physical_group",
@@ -356,6 +357,7 @@ class DeviceViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = (
         "hostname",
         "device_type",
+        "documentation_link",
         "device_version",
         "physical_owner",
         "physical_group",

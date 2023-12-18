@@ -377,7 +377,15 @@ class DeviceAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Properties",
-            {"fields": ("hostname", "device_type", "worker_host", "device_version")},
+            {
+                "fields": (
+                    "hostname",
+                    "device_type",
+                    "worker_host",
+                    "device_version",
+                    "documentation_link",
+                )
+            },
         ),
         ("Device owner", {"fields": (("physical_owner", "physical_group"),)}),
         (
