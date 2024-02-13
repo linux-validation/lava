@@ -137,7 +137,14 @@ class RepoAction(Action):
             raise LAVABug("Overlay location does not exist")
 
         # runner_path is the path to read and execute from to run the tests after boot
-        lava_test_results_dir = self.get_constant("lava_test_results_dir", "posix")
+        results_dir_check = self.job.parameters.get("context", {}).get(
+            "lava_test_results_dir"
+        )
+        if results_dir_check:
+            lava_test_results_dir = results_dir_check
+        else:
+            lava_test_results_dir = self.get_constant("lava_test_results_dir", "posix")
+
         args = self.parameters
         runner_path = os.path.join(
             lava_test_results_dir % self.job.job_id,
