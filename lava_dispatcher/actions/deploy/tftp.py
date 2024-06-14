@@ -63,8 +63,6 @@ class TftpAction(Action):
 
     def validate(self):
         super().validate()
-        if "kernel" not in self.parameters:
-            self.errors = "%s needs a kernel to deploy" % self.name
         if not self.valid:
             return
         if "nfsrootfs" in self.parameters and "persistent_nfs" in self.parameters:
@@ -115,6 +113,12 @@ class TftpAction(Action):
                         value=True,
                         parameters=parameters,
                     )
+        if "extra_files" in parameters:
+            extra_files_path = os.path.join(self.tftp_dir, "extra_files")
+            for name, entry in parameters["extra_files"].items():
+                self.pipeline.add_action(
+                    DownloaderAction(name, path=extra_files_path, params=entry)
+                )
 
         # TftpAction is a deployment, so once the files are in place, just do the overlay
         self.pipeline.add_action(PrepareOverlayTftp(self.job))

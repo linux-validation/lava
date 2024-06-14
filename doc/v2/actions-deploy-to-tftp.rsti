@@ -208,98 +208,44 @@ colon. In the YAML, all values containing a colon **must** be quoted:
       persistent_nfs:
         address: "127.0.0.1:/var/lib/lava/dispatcher/tmp/armhf/stretch"
 
-.. index:: deploy to tmpfs
+.. _deploy_to_tftp_extra_files:
 
-.. _deploy_to_tmpfs:
+extra_files
+===========
 
-to: tmpfs
-*********
+Specifies a dictionary of additional files to make available on the TFTP server.
+This may be used to support board specific requirements for additional firmware,
+test scripts, or anything else that does not fit into one of the above file
+types.
 
-Used to support QEMU device types which run on a dispatcher. The file is
-downloaded to a temporary directory and made available as one or more images,
-appending specified arguments to a predetermined QEMU command line:
+For each extra_files entry, a separate subdirectory is created on the TFTP
+server to ensure that no clashes will occur if multiple files with the same
+filename are downloaded. The dictionary key is used as the directory name. For
+example, the following deployment will download `test_scripts.itb` into a
+`test_scripts` subdirectory:
 
-.. include:: examples/test-jobs/qemu-amd64-standard-stretch.yaml
-     :code: yaml
-     :start-after: # DEPLOY_BLOCK
-     :end-before: # BOOT_BLOCK
+.. code-block:: yaml
 
-.. _deploy_to_tmpfs_images:
+  - deploy:
+      to: tftp
+      extra_files:
+        test_scripts:
+          url: http://example.com/test_scripts.itb
 
-images
-======
-
-To deploy images using QEMU, arguments need to be prepared and then modified to
-include the downloaded location of the image files. The test writer needs to
-specify the format of the image and other image-specific arguments for QEMU
-along with a placeholder **label** which is unique for this test job.
-
-.. _deploy_to_tmpfs_images_label:
-
-label
------
-
-The label is arbitrary text, used to match the other parameters to the
-placeholder so that the final value can be substituted in place of the
-placeholder.
-
-In the example, the label is ``rootfs`` and the ``url`` includes the matching
-placeholder ``{rootfs}``. If the final location of the downloaded image
-is ``/tmp/tmp.rG542e/large-stable-6.img`` then the final argument passed to
-QEMU would include ``-drive format=raw,file=/tmp/tmp.rG542e/large-stable-6.img``.
-
-.. note:: Take note of the syntax. Single brace before and after the label and
-   **no whitespace**. This is test job syntax, not Jinja.
-
-.. include:: examples/test-jobs/qemu-amd64-standard-stretch.yaml
-     :code: yaml
-     :start-after: # DEPLOY_BLOCK
-     :end-before: # BOOT_BLOCK
-
-.. index:: image_arg
-
-.. _deploy_to_tmpfs_images_image_arg:
-
-image_arg
-^^^^^^^^^
-
-The ``image_arg`` determines how QEMU handles the image. The arguments **must**
-include a placeholder :ref:`deploy_to_tmpfs_images_label` which exactly matches
-the key of the same block in the list of images. The actual location of the
-downloaded file will then replace the placeholder. Multiple images can be
-supplied but the test writer is responsible for ensuring that the ``image_arg``
-make sense to QEMU.
-
-.. _deploy_to_tmpfs_images_url:
+.. _deploy_to_tftp_extra_files_url:
 
 url *
-^^^^^
+-----
 .. include:: actions-deploy-images-url.rsti
 
-.. _deploy_to_tmpfs_archive:
+.. _deploy_to_tftp_extra_files_archive:
 
 archive
-^^^^^^^
+-------
 .. include:: actions-deploy-images-archive.rsti
 
-.. _deploy_to_tmpfs_images_compression:
+.. _deploy_to_tftp_extra_files_compression:
 
 compression
-^^^^^^^^^^^
+-----------
 .. include:: actions-deploy-images-compression.rsti
-
-.. _deploy_to_tmpfs_images_md5sum:
-
-md5sum
-^^^^^^
-.. include:: actions-deploy-images-md5sum.rsti
-
-.. _deploy_to_tmpfs_images_sha256sum:
-
-sha256sum
-^^^^^^^^^
-.. include:: actions-deploy-images-sha256sum.rsti
-
-sha512sum
-^^^^^^^^^
-.. include:: actions-deploy-images-sha512sum.rsti

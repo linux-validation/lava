@@ -5,7 +5,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from voluptuous import Any, Exclusive, Optional, Required
+from voluptuous import Any, Exclusive, Extra, Optional, Required
 
 from lava_common.schemas import deploy
 
@@ -15,7 +15,7 @@ def schema():
 
     base = {
         Required("to"): "tftp",
-        Required("kernel", msg="needs a kernel to deploy"): deploy.url(
+        Optional("kernel"): deploy.url(
             {Optional("type"): Any("image", "uimage", "zimage")}
         ),
         Optional("dtb"): resource,
@@ -40,5 +40,6 @@ def schema():
             Optional("install_overlay"): bool,
         },
         Optional("tee"): resource,
+        Optional("extra_files"): {Extra: deploy.url()},
     }
     return {**deploy.schema(), **base}
