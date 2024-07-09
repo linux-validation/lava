@@ -100,6 +100,7 @@ class TftpAction(Action):
             "modules",
             "preseed",
             "tee",
+            "fpga",
         ]:
             if key in parameters:
                 self.pipeline.add_action(
