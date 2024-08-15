@@ -86,7 +86,7 @@ class Pipeline:
 
     def __init__(self, job: Job, parent=None, parameters=None):
         self.actions: list[Action] = []
-        self.parent = None
+        self.parent: Action | None = None
         self.parameters = {} if parameters is None else parameters
         self.job = job
         if parent is not None:
@@ -107,11 +107,46 @@ class Pipeline:
         # if isinstance(action, DiagnosticAction):
         #     raise LAVABug("Diagnostic actions need to be triggered, not added to a pipeline.")
 
+    def _pick_action_timeout(self, parameters, action_name: str) -> int | None:
+        # 1. action block named action timeout
+        if (action_block_timeouts := parameters.get("timeouts")) is not None and (
+            named_timeout_dict := action_block_timeouts.get(action_name)
+        ) is not None:
+            return Timeout.parse(named_timeout_dict)
+
+        # 2. action block timeout
+        if (action_block_timeout := parameters.get("timeout")) is not None:
+            return Timeout.parse(action_block_timeout)
+
+        job_timeouts = self.job.parameters.get("timeouts", {})
+        device_timeouts = self.job.device.get("timeouts", {})
+        # 3. job named action timeout
+        if (job_actions_timeouts := job_timeouts.get("actions")) is not None and (
+            job_named_timeout_dict := job_actions_timeouts.get(action_name)
+        ) is not None:
+            return Timeout.parse(job_named_timeout_dict)
+
+        # 4. device named action timeout
+        if (device_actions_timeouts := device_timeouts.get("actions")) is not None and (
+            device_named_timeout_dict := device_actions_timeouts.get(action_name)
+        ) is not None:
+            return Timeout.parse(device_named_timeout_dict)
+
+        # 5. job action timeout
+        if job_action_timeout_dict := job_timeouts.get("action"):
+            return Timeout.parse(job_action_timeout_dict)
+
+        # 6. device action timeout
+        if device_action_timeout_dict := device_timeouts.get("action"):
+            return Timeout.parse(device_action_timeout_dict)
+
+        return None
+
     def add_action(self, action: Action, parameters=None):
         self._check_action(action)
         self.actions.append(action)
 
-        if self.parent:  # action
+        if self.parent is not None:  # action
             self.parent.pipeline = self
             action.level = "%s.%s" % (self.parent.level, len(self.actions))
             action.section = self.parent.section
@@ -122,32 +157,19 @@ class Pipeline:
         # parameters.
         if parameters is None:
             parameters = self.parameters
-        # if the action has an internal pipeline, initialise that here.
-        action.populate(parameters)
+        action.parameters = parameters
 
         # Compute the timeout
+        action._override_action_timeout(
+            self._pick_action_timeout(parameters, action.name),
+            self.parent,
+        )
+
         global_timeouts = []
         # First, the device level overrides
         global_timeouts.append(self.job.device.get("timeouts", {}))
         # Then job level overrides
         global_timeouts.append(self.job.parameters.get("timeouts", {}))
-
-        # Set the timeout. The order is:
-        # 1. global action timeout
-        action._override_action_timeout(
-            get_lastest_dict_value(global_timeouts, "action")
-        )
-        # 2. global named action timeout
-        action._override_action_timeout(
-            get_lastest_subdict_value(global_timeouts, "actions", action.name)
-        )
-        # 3. action block timeout
-        action._override_action_timeout(parameters.get("timeout"))
-        # 4. action block named action timeout
-        if action_block_timeouts := parameters.get("timeouts"):
-            action._override_action_timeout(
-                action_block_timeouts.get(action.name),
-            )
 
         action._override_connection_timeout(
             get_lastest_dict_value(global_timeouts, "connection")
@@ -156,7 +178,8 @@ class Pipeline:
             get_lastest_subdict_value(global_timeouts, "connections", action.name)
         )
 
-        action.parameters = parameters
+        # If the action has an internal pipeline, initialise after the timeouts.
+        action.populate(parameters)
 
     def describe(self):
         """
@@ -456,16 +479,6 @@ class Action:
         except ValueError:
             raise LAVABug("Action parameters need to be a dictionary")
 
-        # Override the duration if needed
-        if "timeout" in self.parameters:
-            # preserve existing overrides
-            if self.timeout.duration == Timeout.default_duration():
-                self.timeout.duration = Timeout.parse(self.parameters["timeout"])
-        if "connection_timeout" in self.parameters:
-            self.connection_timeout.duration = Timeout.parse(
-                self.parameters["connection_timeout"]
-            )
-
         # only unit tests should have actions without a pointer to the job.
         if "failure_retry" in self.parameters and "repeat" in self.parameters:
             raise JobError("Unable to use repeat and failure_retry, use a repeat block")
@@ -483,9 +496,21 @@ class Action:
                     self.max_retries = int(boot_retry)
         if "repeat" in self.parameters:
             self.max_retries = self.parameters["repeat"]
+        if "failure_retry_interval" in self.parameters:
+            self.sleep = self.parameters["failure_retry_interval"]
         if "character_delays" in self.job.device:
             self.character_delay = self.job.device["character_delays"].get(
                 self.section, 0
+            )
+
+        # Override the duration if needed
+        if "timeout" in self.parameters:
+            # preserve existing overrides
+            if self.timeout.duration == Timeout.default_duration():
+                self.set_action_timeout(Timeout.parse(self.parameters["timeout"]))
+        if "connection_timeout" in self.parameters:
+            self.connection_timeout.duration = Timeout.parse(
+                self.parameters["connection_timeout"]
             )
 
     @parameters.setter
@@ -916,6 +941,9 @@ class Action:
         self.data[namespace][action].setdefault(label, {})
         self.data[namespace][action][label][key] = value
 
+    def set_action_timeout(self, new_timeout: int) -> None:
+        self.timeout.duration = new_timeout
+
     def wait(self, connection, max_end_time=None):
         if not connection:
             return
@@ -942,17 +970,40 @@ class Action:
     def mkdtemp(self, override=None):
         return self.job.mkdtemp(self.name, override=override)
 
-    def _override_action_timeout(self, timeout):
+    def _override_action_timeout(
+        self, timeout: int | None, parent_action: Action | None = None
+    ) -> None:
         """
         Only to be called by the Pipeline object, add_action().
         """
         if timeout is None:
             return
-        if not isinstance(timeout, dict):
-            raise JobError("Invalid timeout %s" % str(timeout))
-        self.timeout.duration = Timeout.parse(timeout)
-        if self.timeout.duration > self.job.timeout.duration:
-            self.logger.warning("Action timeout for %s exceeds Job timeout", self.name)
+        if not isinstance(timeout, int):
+            raise JobError(f"Expected timeout duration in seconds got {timeout!r}")
+
+        self.set_action_timeout(timeout)
+        new_timeout = self.timeout.duration
+        if parent_action is not None:
+            # Check parent Action timeout
+            parent_action_timeout = parent_action.timeout.duration
+            if new_timeout > parent_action_timeout:
+                self.logger.warning(
+                    "Action %r timeout of %r exceeds parent Action %r timeout of %r",
+                    self.name,
+                    new_timeout,
+                    parent_action.name,
+                    parent_action_timeout,
+                )
+        else:
+            # Check job timeout
+            job_timeout = self.job.timeout.duration
+            if new_timeout > job_timeout:
+                self.logger.warning(
+                    "Action %r timeout of %r exceeds Job timeout of %r",
+                    self.name,
+                    new_timeout,
+                    job_timeout,
+                )
 
     def _override_connection_timeout(self, timeout):
         """
