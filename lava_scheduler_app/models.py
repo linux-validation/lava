@@ -1243,7 +1243,7 @@ def _create_pipeline_job(
         job.viewing_groups.add(*viewing_groups)
 
         # Create TestData record and populate metadata
-        from lava_results_app.models import TestData, NamedTestAttribute
+        from lava_results_app.models import NamedTestAttribute, TestData
         testdata = TestData.objects.create(testjob=job)
 
         # Add metadata from job definition
