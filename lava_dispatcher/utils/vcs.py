@@ -46,7 +46,7 @@ class GitHelper(VCSHelper):
             shutil.rmtree(dest_path)
 
         try:
-            cmd_args = [self.binary, "clone"]
+            cmd_args = [self.binary, "clone", "--recurse-submodules"]
             if branch is not None:
                 cmd_args.extend(["-b", branch])
             if shallow:
