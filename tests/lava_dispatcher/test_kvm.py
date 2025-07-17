@@ -10,8 +10,6 @@ import os
 import unittest
 from unittest.mock import patch
 
-from pexpect import EOF as pexpect_eof
-
 from lava_common.exceptions import InfrastructureError, JobError
 from lava_common.yaml import yaml_safe_dump, yaml_safe_load
 from lava_dispatcher.action import Action, Pipeline
@@ -423,7 +421,7 @@ class TestAutoLogin(LavaDispatcherTestCase):
         autologinaction.parameters.update(
             {
                 "auto_login": {"login_prompt": "login:", "username": "root"},
-                "prompts": ["root@debian:~#", pexpect_eof],
+                "prompts": ["root@debian:~#"],
             }
         )
         # Propagate parameters update
@@ -443,10 +441,10 @@ class TestAutoLogin(LavaDispatcherTestCase):
             conn = autologinaction.run(shell_connection, max_end_time)
         self.assertEqual(shell_connection.raw_connection.linesep, "testsep")
 
-        self.assertIn("root@debian:~#", conn.prompt_str)
-        conn.prompt_str = "root@stretch:"
-        self.assertNotIn("root@debian:~#", conn.prompt_str)
-        self.assertIn("root@stretch:", conn.prompt_str)
+        self.assertIn("root@debian:~#", conn.spawn_expect_patterns)
+        conn.set_spawn_expect_patterns("root@stretch:")
+        self.assertNotIn("root@debian:~#", conn.spawn_expect_patterns)
+        self.assertIn("root@stretch:", conn.spawn_expect_patterns)
 
     def test_autologin_void_login_prompt(self):
         self.assertEqual(len(self.job.pipeline.describe()), 4)
@@ -503,7 +501,7 @@ class TestAutoLogin(LavaDispatcherTestCase):
 
         autologinaction = self.job.pipeline.find_action(AutoLoginAction)
 
-        autologinaction.parameters.update({"prompts": ["root@debian:~#", pexpect_eof]})
+        autologinaction.parameters.update({"prompts": ["root@debian:~#"]})
         autologinaction.parameters.update({"method": "qemu"})
         # Propagate parameters update
         autologinaction.populate(autologinaction.parameters)
@@ -516,7 +514,7 @@ class TestAutoLogin(LavaDispatcherTestCase):
         with autologinaction.timeout(None, None) as max_end_time:
             conn = autologinaction.run(shell_connection, max_end_time)
 
-        self.assertIn("root@debian:~#", conn.prompt_str)
+        self.assertIn("root@debian:~#", conn.spawn_expect_patterns)
 
     def test_missing_autologin_void_prompts_str(self):
         self.assertEqual(len(self.job.pipeline.describe()), 4)
@@ -534,7 +532,7 @@ class TestAutoLogin(LavaDispatcherTestCase):
 
         autologinaction = self.job.pipeline.find_action(AutoLoginAction)
 
-        autologinaction.parameters.update({"prompts": ["root@debian:~#", pexpect_eof]})
+        autologinaction.parameters.update({"prompts": ["root@debian:~#"]})
         autologinaction.parameters.update({"method": "qemu"})
         # Propagate parameters update
         autologinaction.populate(autologinaction.parameters)
@@ -547,7 +545,7 @@ class TestAutoLogin(LavaDispatcherTestCase):
         with autologinaction.timeout(None, None) as max_end_time:
             conn = autologinaction.run(shell_connection, max_end_time)
 
-        self.assertIn("root@debian:~#", conn.prompt_str)
+        self.assertIn("root@debian:~#", conn.spawn_expect_patterns)
 
     def test_autologin_login_incorrect(self):
         self.assertEqual(len(self.job.pipeline.describe()), 4)
@@ -573,9 +571,9 @@ class TestAutoLogin(LavaDispatcherTestCase):
         ), autologinaction.timeout(None, None) as max_end_time:
             autologinaction.run(shell_connection, max_end_time)
 
-        self.assertIn("root@debian:~#", shell_connection.prompt_str)
-        self.assertIn("Login incorrect", shell_connection.prompt_str)
-        self.assertIn("Login timed out", shell_connection.prompt_str)
+        self.assertIn("root@debian:~#", shell_connection.spawn_expect_patterns)
+        self.assertIn("Login incorrect", shell_connection.spawn_expect_patterns)
+        self.assertIn("Login timed out", shell_connection.spawn_expect_patterns)
         self.assertIn("2 retries failed for auto-login-action", autologinaction.errors)
 
 

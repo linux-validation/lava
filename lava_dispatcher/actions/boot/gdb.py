@@ -135,7 +135,7 @@ class BootGDBRetry(RetryAction):
         self.logger.info("Starting gdb: %s", cmd)
         shell = ShellCommand(cmd, self.timeout, logger=self.logger)
         gdb = ShellSession(self.job, shell)
-        gdb.prompt_str = "\\(gdb\\) "
+        gdb.set_spawn_expect_patterns("\\(gdb\\) ")
         self.gdb_connection = gdb
         self.gdb_connection.wait()
 
