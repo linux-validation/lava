@@ -169,7 +169,7 @@ class ConnectDevice(Action):
                 % (self.command, shell.exitstatus, shell.readlines())
             )
         # ShellSession monitors the pexpect
-        connection = self.session_class(self.job, shell)
+        connection = self.session_class(shell)
         connection.connected = True
         if self.hardware:
             connection.tags = self.tag_dict[self.hardware]
@@ -233,17 +233,15 @@ class QemuSession(ShellSession):
     cleanly.
     """
 
-    name = "QemuSession"
-
-    def __init__(self, job, raw_connection):
-        super().__init__(job, raw_connection)
+    def __init__(self, shell_command: ShellCommand):
+        super().__init__(shell_command)
         self.tags = ["qemu"]
 
     def finalise(self):
         self.disconnect("closing")
         super().finalise()
 
-    def disconnect(self, reason=""):
+    def disconnect(self, reason: str = ""):
         self.sendline("poweroff", disconnecting=True)
         self.listen_feedback(5)
         self.connected = False
