@@ -4,70 +4,96 @@
 #         Remi Duraffort <remi.duraffort@linaro.org>
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
+from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-import yaml
+from yaml import YAMLError
 
 from lava_common.exceptions import ConfigurationError
 from lava_common.yaml import yaml_safe_load
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-class PipelineDevice(dict):
-    """
-    Dictionary Device class which accepts data rather than a filename.
-    This allows the scheduler to use the same class without needing to write
-    out YAML files from database content.
-    """
 
-    def __init__(self, config):
-        super().__init__()
-        self.update(config)
+class DeviceDict(dict[str, Any]):
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.setdefault("power_state", "off")  # assume power is off at start of job
+        self.setdefault("dynamic_data", {})
 
-    def check_config(self, job):
-        """
-        Validates the combination of the job and the device
-        *before* the Deployment actions are initialised.
-        """
-        raise NotImplementedError("check_config")
+    @classmethod
+    def from_yaml_str(cls, yaml_str: str) -> DeviceDict:
+        try:
+            data = yaml_safe_load(yaml_str)
+        except YAMLError as exc:
+            raise ConfigurationError("Device dict could not be parsed") from exc
 
-    @property
-    def hard_reset_command(self):
-        return self.get("commands", {}).get("hard_reset", "")
+        if data is None:
+            raise ConfigurationError("Empty device configuration")
 
-    @property
-    def soft_reboot_command(self):
-        return self.get("commands", {}).get("soft_reboot", "")
+        return cls(**data)
 
-    @property
-    def pre_os_command(self):
-        return self.get("commands", {}).get("pre_os_command")
+    @classmethod
+    def from_path(cls, path: str | Path) -> DeviceDict:
+        with open(path) as f:
+            return cls.from_yaml_str(f.read())
 
     @property
-    def pre_power_command(self):
-        return self.get("commands", {}).get("pre_power_command")
+    def hard_reset_command(self) -> str | list[str]:
+        hard_reset_command: str | list[str] = self.get("commands", {}).get(
+            "hard_reset", ""
+        )
+        return hard_reset_command
 
     @property
-    def power_command(self):
-        return self.get("commands", {}).get("power_on", "")
+    def soft_reboot_command(self) -> str | list[str]:
+        soft_reboot_command: str | list[str] = self.get("commands", {}).get(
+            "soft_reboot", ""
+        )
+        return soft_reboot_command
 
     @property
-    def connect_command(self):
+    def pre_os_command(self) -> str:
+        pre_os_command: str = self.get("commands", {}).get("pre_os_command")
+        return pre_os_command
+
+    @property
+    def pre_power_command(self) -> str:
+        pre_power_command: str = self.get("commands", {}).get("pre_power_command")
+        return pre_power_command
+
+    @property
+    def power_command(self) -> str | list[str]:
+        power_command: str | list[str] = self.get("commands", {}).get("power_on", "")
+        return power_command
+
+    @property
+    def connect_command(self) -> str:
         if "commands" not in self:
             raise ConfigurationError(
                 "commands section not present in the device config."
             )
         if "connect" in self["commands"]:
-            return self["commands"]["connect"]
+            commands_connect: str = self["commands"]["connect"]
+            return commands_connect
         elif "connections" in self["commands"]:
             for hardware, value in self["commands"]["connections"].items():
                 if "connect" not in value:
                     return ""
                 if "tags" in value and "primary" in value["tags"]:
-                    return value["connect"]
+                    hardware_value_connect: str = value["connect"]
+                    return hardware_value_connect
         return ""
 
-    def get_constant(self, const, prefix=None, missing_ok=False, missing_default=None):
+    def get_constant(
+        self,
+        const: str,
+        prefix: str | None = None,
+        missing_ok: bool = False,
+        missing_default: Any | None = None,
+    ) -> Any:
         if "constants" not in self:
             raise ConfigurationError(
                 "constants section not present in the device config."
@@ -80,8 +106,8 @@ class PipelineDevice(dict):
             if missing_ok:
                 return missing_default
             raise ConfigurationError(
-                "Constant %s,%s does not exist in the device config 'constants' section."
-                % (prefix, const)
+                f"Constant {prefix},{const} does not exist in the device "
+                "config 'constants' section."
             )
         if const in constants:
             return constants[const]
@@ -91,44 +117,3 @@ class PipelineDevice(dict):
             "Constant %s does not exist in the device config 'constants' section."
             % const
         )
-
-
-class NewDevice(PipelineDevice):
-    """
-    YAML based PipelineDevice class with clearer support for the pipeline overrides
-    and deployment types. Simple change of init whilst allowing the scheduler and
-    the dispatcher to share the same functionality.
-    """
-
-    def __init__(self, target):
-        super().__init__({})
-        # Parse the yaml configuration
-        try:
-            if isinstance(target, str):
-                with open(target) as f_in:
-                    data = f_in.read()
-                data = yaml_safe_load(data)
-            elif isinstance(target, dict):
-                data = target
-            elif isinstance(target, Path):
-                data = target.read_text(encoding="utf-8")
-                data = yaml_safe_load(data)
-            else:
-                raise ConfigurationError(
-                    f"Unsupported device configuration type: {type(target)}"
-                )
-            if data is None:
-                raise ConfigurationError("Empty device configuration")
-            self.update(data)
-        except yaml.parser.ParserError:
-            raise ConfigurationError("%s could not be parsed" % target)
-
-        self.setdefault("power_state", "off")  # assume power is off at start of job
-        self.setdefault("dynamic_data", {})
-
-    def check_config(self, job):
-        """
-        Validates the combination of the job and the device
-        *before* the Deployment actions are initialised.
-        """
-        raise NotImplementedError("check_config")
