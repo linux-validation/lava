@@ -64,10 +64,21 @@
 {% set usb_device_id = usb_device_id|default(0) %}
 
 {% set uboot_mac_addr = uboot_mac_addr|default('') %}
-{% set base_uboot_set_mac = ["setenv ethaddr"] -%}
-{% if uboot_mac_addr %}
-  {% set base_uboot_set_mac = ["setenv ethaddr " + uboot_mac_addr] -%}
+{% if uboot_mac_addr is string %}
+  {% set uboot_mac_addr = [uboot_mac_addr] %}
 {% endif %}
+{% set base_uboot_set_mac = base_uboot_set_mac|default(["setenv ethaddr"]) -%}
+{% set ns_base_uboot_set_mac = namespace(key=[]) %}
+{% if uboot_mac_addr %}
+  {% for set_mac, mac in base_uboot_set_mac|zip(uboot_mac_addr) %}
+    {% if mac %}
+      {% set mac = " " + mac %}
+    {% endif %}
+    {% set ns_base_uboot_set_mac.key = ns_base_uboot_set_mac.key + [set_mac + mac] -%}
+  {% endfor %}
+  {% set base_uboot_set_mac = ns_base_uboot_set_mac.key -%}
+{% endif %}
+{% set uboot_mac_addr = uboot_mac_addr|join(",") %}
 
 {% set uboot_set_mac = uboot_set_mac|default(false) %}
 

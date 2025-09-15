@@ -29,4 +29,5 @@ def create_device_templates_env(
     )
     new_env.filters["shlex_quote"] = shlex_quote
     new_env.filters["yaml_quote"] = yaml_quote
+    new_env.filters["zip"] = zip
     return new_env
