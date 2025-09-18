@@ -732,7 +732,7 @@ class HttpDownloadAction(DownloadHandler):
                 raise InfrastructureError(
                     "Unable to download '%s'" % (self.url.geturl())
                 )
-            yield from res.iter_content(HTTP_DOWNLOAD_CHUNK_SIZE)
+            yield from res.raw.stream(HTTP_DOWNLOAD_CHUNK_SIZE, decode_content=False)
         except requests.RequestException as exc:
             raise InfrastructureError(
                 "Unable to download '%s': %s" % (self.url.geturl(), str(exc))
