@@ -1242,6 +1242,18 @@ def _create_pipeline_job(
         job.tags.add(*taglist)
         job.viewing_groups.add(*viewing_groups)
 
+        # Create TestData record and populate metadata
+        from lava_results_app.models import NamedTestAttribute, TestData
+
+        testdata = TestData.objects.create(testjob=job)
+
+        # Add metadata from job definition
+        if "metadata" in job_data:
+            for key, value in job_data["metadata"].items():
+                NamedTestAttribute.objects.create(
+                    content_object=testdata, name=key, value=str(value)
+                )
+
     return job
 
 
