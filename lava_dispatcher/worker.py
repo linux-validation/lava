@@ -37,11 +37,11 @@ from lava_common.constants import DISPATCHER_DOWNLOAD_DIR
 from lava_common.constants import WORKER_DIR as _WORKER_DIR_STR
 from lava_common.exceptions import LAVABug
 from lava_common.version import __version__
-from lava_common.worker import get_parser, init_sentry_sdk
+from lava_common.worker import LavaWorkerBaseOptions, get_base_parser, init_sentry_sdk
 from lava_common.yaml import yaml_safe_load
 
 if TYPE_CHECKING:
-    from argparse import Namespace as argparse_ns
+    from argparse import ArgumentParser
     from typing import Any
 
 ###########
@@ -702,7 +702,7 @@ async def start(
 
 
 async def get_job_data(
-    session: aiohttp.ClientSession, options: argparse_ns
+    session: aiohttp.ClientSession, options: LavaWorkerOptions
 ) -> dict[str, Any]:
     try:
         data = await ping(session, options.url, options.token, options.name)
@@ -719,8 +719,10 @@ async def get_job_data(
 ###############
 # Entrypoints #
 ###############
-async def handle(options, session: aiohttp.ClientSession, jobs: JobsDB) -> None:
-    url: str = options.url
+async def handle(
+    options: LavaWorkerOptions, session: aiohttp.ClientSession, jobs: JobsDB
+) -> None:
+    url = options.url
     job_log_interval: int = options.job_log_interval
 
     data = await get_job_data(session, options)
@@ -745,7 +747,10 @@ async def handle(options, session: aiohttp.ClientSession, jobs: JobsDB) -> None:
 
 
 async def main_loop(
-    options, session: aiohttp.ClientSession, jobs: JobsDB, event: asyncio.Event
+    options: LavaWorkerOptions,
+    session: aiohttp.ClientSession,
+    jobs: JobsDB,
+    event: asyncio.Event,
 ) -> None:
     loop = asyncio.get_running_loop()
     while True:
@@ -798,7 +803,7 @@ def sigchld_handler(session: aiohttp.ClientSession, url: str, jobs: JobsDB) -> N
 
 
 async def listen_for_events(
-    options, session: aiohttp.ClientSession, event: asyncio.Event
+    options: LavaWorkerOptions, session: aiohttp.ClientSession, event: asyncio.Event
 ) -> None:
     retry_interval = 1
     while True:
@@ -839,9 +844,43 @@ def ask_exit(signame: str, group: asyncio.Future[Any]) -> None:
     group.cancel()
 
 
+@dataclass
+class LavaWorkerOptions(LavaWorkerBaseOptions):
+    url: str
+    debug: bool
+    wait_jobs: bool
+    exit_on_version_mismatch: bool
+
+
+def get_parser() -> ArgumentParser:
+    parser, storage_group, net_group = get_base_parser(
+        description="LAVA Worker",
+        log_file="/var/log/lava-dispatcher/lava-worker.log",
+        worker_dir=WORKER_DIR,
+    )
+
+    parser.add_argument(
+        "--debug", action="store_true", default=False, help="Debug lava-run"
+    )
+    parser.add_argument(
+        "--exit-on-version-mismatch",
+        action="store_true",
+        help="Exit when there is a server mismatch between worker and server.",
+    )
+    parser.add_argument(
+        "--wait-jobs",
+        action="store_true",
+        help="Wait for jobs to finish prior to exit",
+    )
+
+    net_group.add_argument("--url", required=True, help="Base URL of the server")
+
+    return parser
+
+
 async def main() -> int:
     # Parse command line
-    options = get_parser().parse_args()
+    options = LavaWorkerOptions(**vars(get_parser().parse_args()))
     if options.sentry_dsn:
         init_sentry_sdk(options.sentry_dsn)
     if options.token_file is None:
@@ -889,16 +928,16 @@ async def main() -> int:
         timeout=aiohttp.ClientTimeout(total=ping_interval),
     ) as session:
         try:
-            if options.username is not None:
+            if options.token:
+                LOG.info("[INIT] Token  : '<command line>'")
+                options.token_file.write_text(options.token, encoding="utf-8")
+                options.token_file.chmod(0o600)
+            elif options.username is not None:
                 LOG.info("[INIT] Token  : '<auto register with %s>'", options.username)
                 password = getpass.getpass()
                 options.token = await register(
                     session, options.url, options.name, options.username, password
                 )
-                options.token_file.write_text(options.token, encoding="utf-8")
-                options.token_file.chmod(0o600)
-            elif options.token is not None:
-                LOG.info("[INIT] Token  : '<command line>'")
                 options.token_file.write_text(options.token, encoding="utf-8")
                 options.token_file.chmod(0o600)
             elif options.token_file.exists():
