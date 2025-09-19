@@ -27,6 +27,8 @@ else
     'lava_dispatcher/actions/boot_strategy.py'
     'lava_dispatcher/actions/deploy_strategy.py'
     'lava_dispatcher/actions/test_strategy.py'
+    'lava_dispatcher/protocols/lxc.py'
+    'lava_dispatcher/protocols/multinode.py'
     'lava_dispatcher/utils/compression.py'
     'lava_dispatcher/utils/contextmanager.py'
     'lava_dispatcher/utils/decorator.py'
