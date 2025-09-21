@@ -179,6 +179,7 @@ class DockerDriver(NullDriver):
 
     def build(self, cls, copy_files=True):
         docker = cls.from_parameters(self.params, self.action.job)
+        docker.docker_login(self.params.get("login"))
         docker.add_docker_options(*self.docker_options)
         docker.add_docker_run_options(*self.docker_run_options)
 
@@ -278,9 +279,11 @@ class DockerDriver(NullDriver):
     @property
     def key(self):
         docker = DockerRun.from_parameters(self.params, self.action.job)
+        docker.docker_login(self.params.get("login"))
         return docker.image
 
     def validate(self):
         docker = DockerRun.from_parameters(self.params, self.action.job)
+        docker.docker_login(self.params.get("login"))
         docker.add_docker_options(*self.docker_options)
         docker.prepare(self.action)
