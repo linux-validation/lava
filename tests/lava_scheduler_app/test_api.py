@@ -1907,9 +1907,7 @@ def test_workers_add(setup):
         exc.value.faultString
         == "Authentication with user and token required for this API."
     )
-    assert (  # nosec
-        Worker.objects.count() == 1
-    )  # "example.com" is part of the migrations
+    assert Worker.objects.count() == 0  # nosec
 
     # 2. as user => error
     with pytest.raises(xmlrpc.client.Fault) as exc:
@@ -1919,15 +1917,13 @@ def test_workers_add(setup):
         exc.value.faultString
         == "User 'user' is missing permission lava_scheduler_app.add_worker."
     )
-    assert (  # nosec
-        Worker.objects.count() == 1
-    )  # "example.com" is part of the migrations
+    assert Worker.objects.count() == 0  # nosec
 
     # 3. as admin => success
     assert (  # nosec
         server("admin", "admin").scheduler.workers.add("dispatcher.example.com") is None
     )
-    assert Worker.objects.count() == 2  # nosec
+    assert Worker.objects.count() == 1  # nosec
     worker = Worker.objects.get(hostname="dispatcher.example.com")
     assert worker.description is None  # nosec
     assert worker.health == Worker.HEALTH_ACTIVE  # nosec
@@ -1939,7 +1935,7 @@ def test_workers_add(setup):
         )
         is None
     )
-    assert Worker.objects.count() == 3  # nosec
+    assert Worker.objects.count() == 2  # nosec
     worker = Worker.objects.get(hostname="worker.example.com")
     assert worker.description == "worker"  # nosec
     assert worker.health == Worker.HEALTH_RETIRED  # nosec
@@ -1949,7 +1945,7 @@ def test_workers_add(setup):
         server("admin", "admin").scheduler.workers.add("worker{[),~!<.example.com")
         is None
     )
-    assert Worker.objects.count() == 4  # nosec
+    assert Worker.objects.count() == 3  # nosec
     worker = Worker.objects.get(hostname="worker{[),~!<.example.com")
     assert worker.description is None  # nosec
     assert worker.health == Worker.HEALTH_ACTIVE  # nosec
@@ -1962,6 +1958,8 @@ def test_workers_add(setup):
 
 
 def test_workers_delete(setup):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
     # 1. as anonymous => error
     with pytest.raises(xmlrpc.client.Fault) as exc:
         # "example.com" is part of the migrations
@@ -1996,6 +1994,9 @@ def test_workers_delete(setup):
 
 @pytest.mark.django_db
 def test_workers_get_config_old_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     (tmp_path / "example.com.yaml").write_text("hello", encoding="utf-8")
     mocker.patch(
         "lava_server.files.File.KINDS",
@@ -2015,6 +2016,9 @@ def test_workers_get_config_old_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_config_new_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     (tmp_path / "example.com").mkdir()
     (tmp_path / "example.com" / "dispatcher.yaml").write_text(
         "hello world", encoding="utf-8"
@@ -2037,6 +2041,9 @@ def test_workers_get_config_new_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_config_exceptions(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {
@@ -2073,6 +2080,9 @@ def test_workers_get_config_exceptions(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_env_old_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     (tmp_path / "env.yaml").write_text("hello", encoding="utf-8")
     mocker.patch(
         "lava_server.files.File.KINDS",
@@ -2087,6 +2097,9 @@ def test_workers_get_env_old_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_env_new_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     (tmp_path / "example.com").mkdir()
     (tmp_path / "example.com" / "env.yaml").write_text("hello world", encoding="utf-8")
     mocker.patch(
@@ -2102,6 +2115,9 @@ def test_workers_get_env_new_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_env_exceptions(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {"env": [str(tmp_path / "{name}/env.yaml"), str(tmp_path / "env.yaml")]},
@@ -2132,6 +2148,9 @@ def test_workers_get_env_exceptions(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_env_dut_old_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     (tmp_path / "env-dut.yaml").write_text("hello", encoding="utf-8")
     mocker.patch(
         "lava_server.files.File.KINDS",
@@ -2151,6 +2170,9 @@ def test_workers_get_env_dut_old_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_env_dut_new_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     (tmp_path / "example.com").mkdir()
     (tmp_path / "example.com" / "env-dut.yaml").write_text(
         "hello world", encoding="utf-8"
@@ -2173,6 +2195,9 @@ def test_workers_get_env_dut_new_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_get_env_dut_exceptions(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {
@@ -2208,6 +2233,9 @@ def test_workers_get_env_dut_exceptions(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_set_config(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {
@@ -2237,6 +2265,9 @@ def test_workers_set_config(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_set_config_exceptions(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {
@@ -2289,6 +2320,9 @@ def test_workers_set_config_exceptions(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_set_env(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {"env": [str(tmp_path / "{name}/env.yaml"), str(tmp_path / "env.yaml")]},
@@ -2312,6 +2346,9 @@ def test_workers_set_env(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_set_env_exceptions(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {"env": [str(tmp_path / "{name}/env.yaml"), str(tmp_path / "env.yaml")]},
@@ -2355,6 +2392,9 @@ def test_workers_set_env_exceptions(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_set_env_dut(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {
@@ -2384,6 +2424,9 @@ def test_workers_set_env_dut(setup, mocker, tmp_path):
 
 @pytest.mark.django_db
 def test_workers_set_env_dut_exceptions(setup, mocker, tmp_path):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     mocker.patch(
         "lava_server.files.File.KINDS",
         {
@@ -2437,23 +2480,26 @@ def test_workers_set_env_dut_exceptions(setup, mocker, tmp_path):
 @pytest.mark.django_db
 def test_workers_list(setup):
     data = server().scheduler.workers.list()
-    assert data == ["example.com"]  # nosec
+    assert data == []  # nosec
 
     Worker.objects.create(hostname="worker01")
     data = server().scheduler.workers.list()
-    assert data == ["example.com", "worker01"]  # nosec
+    assert data == ["worker01"]  # nosec
 
     Worker.objects.create(hostname="worker02")
     server("admin", "admin").scheduler.workers.update("worker02", None, "RETIRED")
     data = server().scheduler.workers.list()
-    assert data == ["example.com", "worker01"]  # nosec
+    assert data == ["worker01"]  # nosec
 
     data = server().scheduler.workers.list(True)
-    assert data == ["example.com", "worker01", "worker02"]  # nosec
+    assert data == ["worker01", "worker02"]  # nosec
 
 
 @pytest.mark.django_db
 def test_workers_show(setup):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", "worker", True)
+
     data = server().scheduler.workers.show("example.com")
     assert set(data.keys()) == {  # nosec
         "hostname",
@@ -2479,6 +2525,9 @@ def test_workers_show(setup):
 
 @pytest.mark.django_db
 def test_workers_update(setup):
+    # Create example.com worker to test against
+    server("admin", "admin").scheduler.workers.add("example.com", None, False)
+
     # 1. as anonymous => failure
     with pytest.raises(xmlrpc.client.Fault) as exc:
         server().scheduler.workers.update("example.com")
