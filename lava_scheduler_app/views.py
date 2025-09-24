@@ -2206,9 +2206,9 @@ def job_log_incremental(request, pk):
     return response
 
 
-@transaction.atomic
+@require_POST
 def job_cancel(request, pk):
-    job = TestJob.get_restricted_job(pk, request.user, for_update=True)
+    job = TestJob.get_restricted_job(pk, request.user)
     try:
         job.cancel(request.user)
         return redirect(job)
@@ -2218,6 +2218,7 @@ def job_cancel(request, pk):
         )
 
 
+@require_POST
 def job_fail(request, pk):
     if not request.user.is_superuser:
         return HttpResponseForbidden(
@@ -2235,6 +2236,7 @@ def job_fail(request, pk):
         return redirect(job)
 
 
+@require_POST
 def job_resubmit(request, pk):
     is_resubmit = request.POST.get("is_resubmit", False)
 
@@ -2327,6 +2329,7 @@ def job_change_priority(request, pk):
     return redirect(job)
 
 
+@require_POST
 def job_toggle_favorite(request, pk):
     if not request.user.is_authenticated:
         raise PermissionDenied()
