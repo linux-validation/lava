@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import subprocess  # nosec - internal use.
+from pathlib import Path
 
 from lava_common.exceptions import InfrastructureError
 from lava_dispatcher.utils.decorator import retry
@@ -72,13 +73,18 @@ class GitHelper(VCSHelper):
                 cmd_args.append("--depth=1")
             cmd_args.extend([self.url, dest_path])
 
+            # use SSH key config of lavaserver user, thus prepare directory and config for this user to be writable
+            Path(dest_path).mkdir(parents=True)
+            shutil.chown(dest_path, user="lavaserver")
+            subprocess.run([self.binary, "config", "--global", "--add", "safe.directory", dest_path], user="lavaserver", env={"HOME": "/var/lib/lava-server/home"})
+
             logger.debug("Running '%s'", " ".join(cmd_args))
             # Replace shell variables by the corresponding environment variable
             cmd_args[-2] = os.path.expandvars(cmd_args[-2])
 
             try:
-                subprocess.check_output(  # nosec - internal use.
-                    cmd_args, stderr=subprocess.STDOUT
+                subprocess.run(  # nosec - internal use.
+                    cmd_args, check=True, stderr=subprocess.STDOUT, user="lavaserver", env={"HOME": "/var/lib/lava-server/home"}
                 )
             except subprocess.CalledProcessError as exc:
                 if (
@@ -90,23 +96,23 @@ class GitHelper(VCSHelper):
                         "Tried shallow clone, but server doesn't support it. Retrying without..."
                     )
                     cmd_args.remove("--depth=1")
-                    subprocess.check_output(  # nosec - internal use.
-                        cmd_args, stderr=subprocess.STDOUT
+                    subprocess.run(  # nosec - internal use.
+                        cmd_args, check=True, stderr=subprocess.STDOUT, user="lavaserver", env={"HOME": "/var/lib/lava-server/home"}
                     )
                 else:
                     raise
 
             if revision is not None:
                 logger.debug("Running '%s checkout %s", self.binary, str(revision))
-                subprocess.check_output(  # nosec - internal use.
+                subprocess.run(  # nosec - internal use.
                     [self.binary, "-C", dest_path, "checkout", str(revision)],
-                    stderr=subprocess.STDOUT,
+                    check=True, stderr=subprocess.STDOUT, user="lavaserver", env={"HOME": "/var/lib/lava-server/home"}
                 )
 
-            commit_id = subprocess.check_output(  # nosec - internal use.
+            commit_id = subprocess.run(  # nosec - internal use.
                 [self.binary, "-C", dest_path, "log", "-1", "--pretty=%H"],
-                stderr=subprocess.STDOUT,
-            ).strip()
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, user="lavaserver", env={"HOME": "/var/lib/lava-server/home"}
+            ).stdout.strip()
 
             if not history:
                 logger.debug("Removing '.git' directory in %s", dest_path)
@@ -120,6 +126,9 @@ class GitHelper(VCSHelper):
             raise InfrastructureError(
                 "Unable to fetch git repository '%s'" % (self.url)
             )
+        finally:
+            # cleanup config to avoid clogging it
+            subprocess.run([self.binary, "config", "--global", "--unset", "safe.directory", dest_path], user="lavaserver", env={"HOME": "/var/lib/lava-server/home"})
 
         return commit_id.decode("utf-8", errors="replace")
 
