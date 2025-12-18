@@ -15,6 +15,7 @@ jobs:
       ARCH: amd64
       COMPONENT: dispatcher
       VERSION: debian-13
+    name: $ARCH-$COMPONENT-$VERSION
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
