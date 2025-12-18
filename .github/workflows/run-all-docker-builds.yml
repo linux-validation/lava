@@ -1,0 +1,20 @@
+permissions:
+    contents: read
+    checks: write
+    id-token: write
+    packages: write
+
+name: Run all LAVA docker builds
+on: [workflow_dispatch, push]
+jobs:
+  run-all-docker-build-jobs:
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [dispatcher, server]
+        arch: [amd64]
+    uses: ./.github/workflows/docker-build-job.yml
+    with:
+      component: ${{ matrix.component }}
+      arch: ${{ matrix.arch }}
+
