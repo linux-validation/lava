@@ -1,0 +1,85 @@
+# Install this file as:
+#   .github/workflows/update-dispatcher-factory-staging.yml
+# on the NEWEST qualcomm-* branch of github.com/linux-validation/lava
+# (alongside update-factory-staging.yml).
+#
+# Reusable workflow, called from run-all-docker-builds.yml after the image build
+# finishes. It writes the new tag into the lava-dispatcher factory's Dockerfile
+# (the `FROM ...lava-dispatcher-amd64:<tag>` base image) on the staging branch of
+# source.foundries.io, which triggers the Foundries OTA rollout.
+#
+# Required GitHub Actions secret (repo: linux-validation/lava):
+#   FIO_API_TOKEN  - a Foundries.io API token with source read+update scope
+#                    (https://app.foundries.io/settings/tokens/)
+#
+name: Update LAVA dispatcher factory (staging)
+
+on:
+  # Called by run-all-docker-builds.yml once the build jobs succeed.
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (provided by the build job)"
+        required: true
+        type: string
+  # Manual run. The image must already exist in GHCR for a manual deploy.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g. 2026.05-qualcomm-2026.05-8-5dc6de1bb)"
+        required: true
+
+# Never let two updates of the same branch race each other.
+concurrency:
+  group: update-dispatcher-factory-staging-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # GHCR base image referenced by the dispatcher factory Dockerfile.
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/lava-dispatcher-amd64
+  # Foundries factory containers repo to update (staging branch, hardcoded below).
+  FACTORY_REPO: source.foundries.io/factories/lava-dispatcher/containers.git
+  DOCKERFILE_PATH: lava-dispatcher/Dockerfile
+
+jobs:
+  update-dispatcher-factory-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update dispatcher factory staging Dockerfile
+        env:
+          FIO_API_TOKEN: ${{ secrets.FIO_API_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "No image_tag provided (it must come from the build job)." >&2
+            exit 1
+          fi
+          NEW_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+
+          # Authenticate to source.foundries.io per Foundries git-config docs
+          # (API token with source-code access, sent as a basic auth header):
+          # https://docs.foundries.io/88/getting-started/git-config/
+          git config --global http.https://source.foundries.io.extraheader \
+            "Authorization: basic $(printf '%s' "${FIO_API_TOKEN}" | openssl base64)"
+
+          git clone --branch staging --depth 1 \
+            "https://${FACTORY_REPO}" factory
+          cd factory
+
+          # Replace the tag on the FROM line referencing the dispatcher base image.
+          sed -i -E "s|(${IMAGE_NAME}):[^[:space:]]+|\\1:${IMAGE_TAG}|g" "${DOCKERFILE_PATH}"
+
+          if git diff --quiet -- "${DOCKERFILE_PATH}"; then
+            echo "Dockerfile already on ${NEW_IMAGE}; nothing to do."
+            exit 0
+          fi
+
+          echo "Updated base image reference:"
+          grep -n "${IMAGE_NAME}" "${DOCKERFILE_PATH}" || true
+
+          git config user.name  "lava-factory-bot"
+          git config user.email "ci@linux-validation"
+          git add "${DOCKERFILE_PATH}"
+          git commit -m "Update staging to ${IMAGE_TAG}"
+          git push origin staging
