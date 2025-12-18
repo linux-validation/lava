@@ -1,0 +1,23 @@
+permissions:
+    contents: read
+    checks: write
+    id-token: write
+
+name: Run all LAVA tests
+on: [workflow_dispatch, push]
+jobs:
+  run-all-test-jobs:
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [dispatcher, server]
+        distro: [debian]
+        arch: [amd64]
+        version: [12, 13]
+    uses: ./.github/workflows/generic-lava-test-job.yml
+    with:
+      component: ${{ matrix.component }}
+      distro: ${{ matrix.distro }}
+      arch: ${{ matrix.arch }}
+      version: ${{ matrix.version }}
+
