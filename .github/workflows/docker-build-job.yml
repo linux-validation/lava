@@ -1,0 +1,58 @@
+permissions:
+    contents: read
+    packages: write
+
+name: "LAVA docker build job"
+on:
+  workflow_call:
+    inputs:
+      ci_job_stage:
+        required: false
+        type: string
+        default: "build"
+      arch:
+        required: true
+        type: string
+      component:
+        required: true
+        type: string
+    outputs:
+      image_tag:
+        description: "Computed LAVA image tag (from lava_common/version.py)"
+        value: ${{ jobs.lava-docker-build.outputs.image_tag }}
+
+env:
+  CI_REGISTRY: ghcr.io
+
+
+jobs:
+  lava-docker-build:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.version.outputs.image_tag }}
+    container:
+      image: docker:24
+      env:
+        DOCKER_DRIVER: overlay2
+        DOCKER_BUILDKIT: 1
+    services:
+      dind:
+        image: docker:24-dind
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - run: apk add git python3
+      - run: git config --global --add safe.directory $PWD
+      - run: docker login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} $CI_REGISTRY
+      - run: git describe
+      - name: Compute image tag
+        id: version
+        run: echo "image_tag=$(./lava_common/version.py)" >> "$GITHUB_OUTPUT"
+      - run: ./.gitlab-ci/${{ inputs.ci_job_stage }}/docker.sh "${{ inputs.component }}"
+        env:
+          CI_JOB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+          IMAGE_NAME: "ghcr.io/${{ github.repository }}/lava-${{ inputs.component }}-${{ inputs.arch }}"
