@@ -1,6 +1,7 @@
 #!/bin/sh
 
 set -e
+set -x
 
 export DOCKER_BUILDKIT=1
 export RUNTIME=${RUNTIME:-docker}
