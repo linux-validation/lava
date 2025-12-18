@@ -1,0 +1,35 @@
+permissions:
+    contents: read
+    checks: write
+    id-token: write
+
+env:
+  CI_JOB_STAGE: "build"
+  ARCH: amd64
+  DISTRO: debian
+  VERSION: 13
+
+name: Build LAVA packages
+on: [push, workflow_dispatch]
+jobs:
+  build-debian-13:
+    runs-on: ubuntu-latest
+    container: registry.gitlab.com/lava/ci-images/amd64/pkg-debian-13
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v6
+      - run: git config --global --add safe.directory $PWD
+      - name: "Setup ${{ env.ARCH }}-${{ env.DISTRO }}-${{ env.VERSION }}"
+        run: ./.gitlab-ci/$CI_JOB_STAGE/$DISTRO/$VERSION.sh setup
+      - name: "Build ${{ env.ARCH }}-${{ env.DISTRO }}-${{ env.VERSION }}"
+        run: bash -x ./.gitlab-ci/$CI_JOB_STAGE/$DISTRO/$VERSION.sh
+      - name: upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: |
+            _build/*.deb
+            _build/*.tar.xz
+            _build/*.dsc
+            _build/*.changes
+            _build/*.buildinfo
+          overwrite: True
