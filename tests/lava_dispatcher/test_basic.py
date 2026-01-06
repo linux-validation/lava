@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import unittest
+from contextlib import contextmanager
 from functools import cache
 from pathlib import Path
 from random import randint
@@ -45,19 +46,39 @@ if TYPE_CHECKING:
     from jinja2.sandbox import SandboxedEnvironment
 
 
+class DummyLavaLoggerHandler:
+    def __init__(self) -> None:
+        self.output: list[str] = []
+
+    def emit(self, data_str: str) -> None:
+        self.output.append(data_str)
+
+
 class LavaDispatcherTestCase(unittest.TestCase):
     # set to True to update pipeline_references automatically.
     update_ref = False
+
+    @contextmanager
+    def collect_lava_logs(self, action_or_job: Action | Job) -> DummyLavaLoggerHandler:
+        collector = DummyLavaLoggerHandler()
+        original_logger = action_or_job.logger
+        original_handler = original_logger.handler
+
+        try:
+            original_logger.handler = collector
+            yield collector
+        finally:
+            original_logger.handler = original_handler
 
     def create_temporary_directory(self) -> Path:
         tmp_dir = TemporaryDirectory(prefix=self.__call__.__name__)
         self.addCleanup(tmp_dir.cleanup)
         return Path(tmp_dir.name)
 
-    TESTCASE_JOB_LOGGER = YAMLLogger("lava_dispatcher_testcase_job_logger")
-
     def create_job_mock(self) -> Job:
-        return MagicMock(spec=Job)
+        job_mock = MagicMock(spec=Job)
+        job_mock.logger = YAMLLogger()
+        return job_mock
 
     def create_simple_job(
         self,
@@ -73,7 +94,6 @@ class LavaDispatcherTestCase(unittest.TestCase):
         new_job = Job(
             job_id=randint(0, 2**32 - 1),
             parameters=job_parameters,
-            logger=LavaDispatcherTestCase.TESTCASE_JOB_LOGGER,
             device=NewDevice(device_dict),
             timeout=Timeout(
                 f"unittest-timeout-{self.__class__.__name__}",
@@ -260,7 +280,6 @@ class Factory:
                 content=yaml_safe_dump(job_dict),
                 device=device,
                 job_id=str(randint(1, 2**32 - 1)),
-                logger=YAMLLogger("lava_dispatcher_testcase_job_logger"),
                 dispatcher_config=dispatcher_config,
                 env_dut=env_dut,
             )
