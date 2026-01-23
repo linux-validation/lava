@@ -5,7 +5,7 @@ permissions:
     packages: write
 
 name: Run all LAVA docker builds
-on: [workflow_dispatch, push]
+on: [workflow_dispatch, push, pull_request]
 jobs:
   run-all-docker-build-jobs:
     strategy:
