@@ -4,7 +4,7 @@ permissions:
     id-token: write
 
 name: Run all LAVA tests
-on: [workflow_dispatch, push]
+on: [workflow_dispatch, push, pull_request]
 jobs:
   run-all-test-jobs:
     strategy:
