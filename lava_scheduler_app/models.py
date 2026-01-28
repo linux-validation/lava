@@ -303,7 +303,8 @@ class DeviceType(RestrictedObject):
     )
 
     health_frequency = models.IntegerField(
-        verbose_name="How often to run health checks", default=24
+        verbose_name="How often to run health checks",
+        default=settings.HEALTH_FREQUENCY_HOURS,
     )
 
     disable_health_check = models.BooleanField(
