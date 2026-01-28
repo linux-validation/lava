@@ -600,6 +600,17 @@ directly in job definition:
    queue:
      hours: 336
 
+Configuring default health frequency
+====================================
+
+By default, LAVA creates a device type with a routine health check
+frequency of 24 hours. Administrators can change the default health check
+frequency (in hours) in ``/etc/lava-server/settings.conf`` for each instance:
+
+.. code-block:: python
+
+ HEALTH_FREQUENCY_HOURS: 168,
+
 .. _admin_control:
 
 Controlling the Django Admin Interface
