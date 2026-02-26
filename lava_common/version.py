@@ -36,12 +36,18 @@ def version(ref: str | None = None) -> str:
                 .strip()
                 .decode("utf-8")  # nosec - internal
             )
+            branch = (
+                subprocess.check_output(['git', 'branch', '--show-current'])
+                .strip()
+                .decode('utf-8')
+            )
             m = pattern.match(describe)
             if m is None:
                 return describe
             else:
                 d = m.groupdict()
-                return f"{d['tag']}.dev{int(d['commits']):04}"
+                return f"{d['tag']}-{branch}-{int(d['commits'])}-{d['hash']}"
+                #return f"{d['tag']}.dev{int(d['commits']):04}"
     return (root / "lava_common" / "VERSION").read_text(encoding="utf-8").rstrip()
 
 
