@@ -5,9 +5,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 from __future__ import annotations
 
+import os
+
+from shlex import split as shlex_split
 from typing import TYPE_CHECKING
 
 from lava_common.exceptions import ConfigurationError, InfrastructureError
+from lava_common.log import SECRETS_MASK
 from lava_dispatcher.action import Action
 
 if TYPE_CHECKING:
@@ -93,6 +97,7 @@ class CommandAction(Action):
 
     def run(self, connection, max_end_time):
         connection = super().run(connection, max_end_time)
+        secret_name = self.parameters.get('create_secret', "")
 
         self.logger.info("Running user command '%s'", self.parameters["name"])
         self.ran = True
@@ -100,7 +105,19 @@ class CommandAction(Action):
         if not isinstance(cmd, list):
             cmd = [cmd]
         for c in cmd:
-            self.run_cmd(c)
+            if secret_name:
+                if isinstance(c, str):
+                    c_list = shlex_split(c)
+                # parsed_command returns output, but expects a list
+                out = self.parsed_command(c_list, show_output=False).strip()
+                if out:
+                    self.logger.debug("Creating secret %s", secret_name)
+                    SECRETS_MASK.add(out)
+                    # we add job secrets to env in lava-run, also add newly created ones
+                    os.environ[secret_name] = out
+                    self.job.secrets[secret_name] = out
+            else:
+                self.run_cmd(c)
         return connection
 
     def cleanup(self, connection):
