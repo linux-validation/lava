@@ -4,10 +4,13 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import os
 from unittest.mock import MagicMock
 from unittest.mock import call as mock_call
 from unittest.mock import patch
 
+from lava_common.exceptions import InfrastructureError
+from lava_common.log import SECRETS_MASK
 from lava_dispatcher.actions.commands import CommandAction
 from lava_dispatcher.device import PipelineDevice
 
@@ -24,7 +27,13 @@ class TestCommands(LavaDispatcherTestCase):
                         "hard_reset": "/path/to/hard-reset",
                         "power_off": ["something", "something-else"],
                         "users": {
-                            "do_something": {"do": "/bin/do", "undo": "/bin/undo"}
+                            "do_something": {"do": "/bin/do", "undo": "/bin/undo"},
+                            "secret_command": {
+                                "do": "echo mysecret!",
+                                "undo": "/bin/undo",
+                            },
+                            "empty_command": {"do": "echo -n ''"},
+                            "bad_command": {"do": "bash -c 'exit 1'"},
                         },
                     }
                 }
@@ -147,3 +156,34 @@ class TestCommands(LavaDispatcherTestCase):
             ],
             self.action.errors,
         )
+
+    def test_command_create_secret(self):
+        self.action.parameters = {
+            "name": "secret_command",
+            "create_secret": "TEST_CREATE_SECRET",
+        }
+        self.action.validate()
+        self.action.run(None, 600)
+        secrets = self.job.parameters.get("secrets", None)
+        self.assertIsNotNone(secrets)
+        self.assertEqual(secrets["TEST_CREATE_SECRET"], "mysecret!")
+        self.assertEqual(os.environ["TEST_CREATE_SECRET"], "mysecret!")
+        self.assertIn("mysecret!", SECRETS_MASK)
+
+    def test_command_bad_command_with_secret(self):
+        self.action.parameters = {
+            "name": "bad_command",
+            "create_secret": "BAD_COMMAND_SECRET",
+        }
+        self.action.validate()
+        with self.assertRaises(InfrastructureError):
+            self.action.run(None, 600)
+
+    def test_command_secret_no_output(self):
+        self.action.parameters = {
+            "name": "empty_command",
+            "create_secret": "EMPTY_SECRET",
+        }
+        self.action.validate()
+        self.action.run(None, 600)
+        self.assertNotIn("secrets", self.job.parameters)
