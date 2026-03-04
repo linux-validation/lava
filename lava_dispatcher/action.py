@@ -553,6 +553,7 @@ class Action:
         cwd=None,
         input: str | None = None,
         env: dict[str, str] | None = None,
+        show_output = True,
     ):
         """
         Support for external command operations on the dispatcher with output handling,
@@ -642,9 +643,9 @@ class Action:
                 self.logger.error(msg)
                 # if not allow_fail, fail the command with the specified exception.
                 raise self.command_exception(exc) from exc
-
-        for line in output.split("\n"):
-            self.logger.debug("output: %s", line)
+        if show_output:
+            for line in output.split("\n"):
+                self.logger.debug("output: %s", line)
         return output
 
     _SUBPROCESS_SIGTERM_TIMEOUT = 3.0
