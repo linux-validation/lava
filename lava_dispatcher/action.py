@@ -548,7 +548,9 @@ class Action:
         """
         pass
 
-    def parsed_command(self, command_list, allow_fail=False, cwd=None):
+    def parsed_command(
+        self, command_list, allow_fail=False, cwd=None, show_output=True
+    ):
         """
         Support for external command operations on the dispatcher with output handling,
         without using a shell and with full structured logging.
@@ -628,9 +630,9 @@ class Action:
                 self.logger.error(msg)
                 # if not allow_fail, fail the command with the specified exception.
                 raise self.command_exception(exc) from exc
-
-        for line in output.split("\n"):
-            self.logger.debug("output: %s", line)
+        if show_output:
+            for line in output.split("\n"):
+                self.logger.debug("output: %s", line)
         return output
 
     _SUBPROCESS_SIGTERM_TIMEOUT = 3.0
