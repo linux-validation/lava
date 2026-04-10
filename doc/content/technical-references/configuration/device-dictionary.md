@@ -477,6 +477,31 @@ The serial number of the JLink probe or target board.
 {% set board_id = '000380000008' %}
 ```
 
+### QDL
+
+#### board_qdl_id
+
+When Qualcomm device goes into EDL (Emedgency download) mode it can be identified by ID.
+This ID should be set in the device dictionary
+
+```jinja
+{% set board_qdl_id = 'D902AA38' %}
+```
+#### qdl_enter_commands
+
+These commands force the device to boot into EDL mode.
+This is usually done by pressing a button.
+In automated setup, like LAVA, it's possible to force the EDL mode using automation interface.
+Some Qualcomm devices are shipped with FTDI based GPIO interface that allows remote control.
+More details on that can be found in [TAC](https://github.com/qualcomm/qcom-test-automation-controller/) documentation.
+
+Note: `qdl_enter_commands` must be a list of strings.
+
+```jinja
+{% set qdl_enter_commands = ['/usr/local/bin/tac-api.py --serial DP05DD00 --command bootToEDL'] %}
+
+```
+
 ### Secondary media
 
 Use `<media>_label` and `<media>_uuid` to configure a secondary media in your
