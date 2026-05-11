@@ -1238,4 +1238,11 @@ class ApplyQDLOverlay(Action):
         # ToDo: modify overlay to include proper path?
         copy_in_overlay(f"{qdl_dir}/{self.rootfs_image}", None, overlay_file)
 
+        self.set_namespace_data(
+            action="qdl-deploy",
+            label="directory-decompress",
+            key="directory-decompress",
+            value=True,
+        )
+
         return connection

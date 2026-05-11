@@ -125,6 +125,8 @@ class FlashQDLAction(Action):
         qcomflash_dir = self.get_namespace_data(
             action="qdl-deploy", label="qdl-directory", key="directory"
         )
+
+        # at this stage it's assumed that qcomflash tarball is decompressed
         for index, qdl_command in enumerate(self.exec_list):
             qdl_cmd = " ".join(qdl_command)
             flash_dir = os.path.join(qcomflash_dir.as_posix(), self.qcomflash_path)
