@@ -34,6 +34,7 @@ class DockerRun:
         self._has_init = True
         self._docker_options: list[str] = []
         self._docker_run_options: list[str] = []
+        self._login = {}
 
     @classmethod
     def from_parameters(cls, params, job):
@@ -45,12 +46,16 @@ class DockerRun:
         run.suffix(suffix)
         run.network(params.get("network_from", None))
         run.local(params.get("local", False))
+        run.login(params.get("login", {}))
         for device in params.get("devices", []):
             run.add_device(device)
         return run
 
     def local(self, local):
         self._is_local_image = local
+
+    def login(self, login):
+        self._login = login
 
     def name(self, name, random_suffix=False):
         suffix = ""
@@ -177,6 +182,9 @@ class DockerRun:
             return action.run_cmd(cmd, error_msg=error_msg)
 
     def prepare(self, action):
+        login = self._login
+        if login:
+            action.run_cmd(["docker", "login", "--username", login['username'], "--password", login['password'], login['registry']])
         pull = not self._is_local_image
         if self._is_local_image:
             if action.run_cmd(
@@ -198,6 +206,8 @@ class DockerRun:
         if pull:
             action.run_cmd(["docker", *self._docker_options, "pull", self.image])
         self._check_image_arch(action)
+        if login:
+            action.run_cmd(['docker', 'logout', login['registry']])
 
     def wait(self, shell=None):
         delay = 1
