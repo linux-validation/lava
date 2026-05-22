@@ -1162,6 +1162,12 @@ class InPlaceTokenUpdater:
                         for key, token_value in headers.items():
                             if token_value in self.tokens:
                                 headers[key] = self.tokens[token_value]
+            # replace tokens in any section with "username", example docker login
+            if "username" in data:
+                for key, token_value in data.items():
+                    if token_value in self.tokens:
+                        data[key] = self.tokens[token_value]
+
             for val in data.values():
                 self.update_headers(val)
 
@@ -1348,6 +1354,7 @@ def internal_v1_jobs_logs(request, pk):
     #       of lines that where actually parsed !!
     test_cases = []
     line_count = 0
+    submitter_tokens = [r["token"] for r in RemoteArtifactsAuth.objects.filter(user=job.submitter).values("token")]
     for line_dict, line_string in zip(yaml_safe_load(lines), lines.splitlines(True)):
         # skip lines that where already saved to disk
         duplicated = False
@@ -1368,6 +1375,9 @@ def internal_v1_jobs_logs(request, pk):
             if not line_string.endswith("\n"):
                 line_string += "\n"
 
+            for token in submitter_tokens:
+                if token in line_string:
+                    line_string = line_string.replace(token, "[REDACTED]")
             # Save the log line
             logs_instance.write(job, line_string.encode("utf-8"), output, index)
 
