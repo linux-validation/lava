@@ -100,9 +100,17 @@ def setup(db):
     dt_juno = DeviceType.objects.create(name="juno")
     dt_qemu_spec = DeviceType.objects.create(name="qemu_:'),;~")
 
-    worker_01 = Worker.objects.create(hostname="worker-01", state=Worker.STATE_OFFLINE)
-    worker_02 = Worker.objects.create(hostname="worker-02", state=Worker.STATE_ONLINE)
-    worker_spec = Worker.objects.create(hostname="worker_:')-,;~")
+    worker_01 = Worker.objects.create(
+        hostname="worker-01", state=Worker.STATE_OFFLINE, version="2024.01"
+    )
+    worker_02 = Worker.objects.create(
+        hostname="worker-02", state=Worker.STATE_ONLINE, version="2024.02"
+    )
+    worker_spec = Worker.objects.create(
+        hostname="worker_:')-,;~",
+        health=Worker.HEALTH_MAINTENANCE,
+        version="special-build",
+    )
 
     qemu_01 = Device.objects.create(
         hostname="qemu01",
@@ -344,6 +352,15 @@ def test_device_types(client, setup):
     assert ret.context["dt_table"].data[2]["device_type"] == "qemu_:'),;~"  # nosec
     assert ret.context["dt_table"].data[2]["idle"] == 0  # nosec
     assert ret.context["dt_table"].data[2]["busy"] == 0  # nosec
+
+
+@pytest.mark.django_db
+def test_device_types_search(client, setup):
+    ret = client.get(reverse("lava.scheduler.device_types"), {"search": "qemu"})
+    assert ret.status_code == 200  # nosec
+    assert len(ret.context["dt_table"].data) == 2  # nosec
+    assert ret.context["dt_table"].data[0]["device_type"] == "qemu"  # nosec
+    assert ret.context["dt_table"].data[1]["device_type"] == "qemu_:'),;~"  # nosec
 
 
 @pytest.mark.django_db
@@ -1019,12 +1036,12 @@ def test_job_description(client, monkeypatch, setup, tmp_path):
 def test_job_submit(client, setup):
     # Anonymous user GET
     ret = client.get(reverse("lava.scheduler.job.submit"))
-    assert ret.status_code == 200  # nosec
+    assert ret.status_code == 401  # nosec
     assert ret.templates[0].name == "lava_scheduler_app/job_submit.html"  # nosec
     assert ret.context["is_authorized"] is False  # nosec
     # Anonymous user POST
     ret = client.post(reverse("lava.scheduler.job.submit"), {"definition-input": ""})
-    assert ret.status_code == 200  # nosec
+    assert ret.status_code == 401  # nosec
     assert ret.templates[0].name == "lava_scheduler_app/job_submit.html"  # nosec
     assert ret.context["is_authorized"] is False  # nosec
 
@@ -1057,7 +1074,7 @@ def test_job_submit(client, setup):
 
     # Logged-user POST
     ret = client.post(reverse("lava.scheduler.job.submit"), {"definition-input": "re"})
-    assert ret.status_code == 200  # nosec
+    assert ret.status_code == 400  # nosec
     assert ret.context["error"] == "expected a dictionary"  # nosec
     assert ret.context["context_help"] == "lava scheduler submit job"  # nosec
     assert ret.context["definition_input"] == "re"  # nosec
@@ -1124,6 +1141,41 @@ def test_workers(client, setup):
     assert workers == set(
         ["worker_:')-,;~", "example.com", "worker-01", "worker-02"]
     )  # nosec
+
+
+@pytest.mark.django_db
+def test_workers_search(client, setup):
+    ret = client.get(reverse("lava.scheduler.workers"), {"worker_search": "worker-01"})
+    assert ret.status_code == 200  # nosec
+    assert len(ret.context["worker_table"].data) == 1  # nosec
+    assert ret.context["worker_table"].data[0].hostname == "worker-01"  # nosec
+
+
+@pytest.mark.django_db
+def test_workers_state_query(client, setup):
+    ret = client.get(reverse("lava.scheduler.workers"), {"worker_state": "Offline"})
+    assert ret.status_code == 200  # nosec
+    workers = {x.hostname for x in ret.context["worker_table"].data}
+    assert "worker-01" in workers  # nosec
+    assert "worker-02" not in workers  # nosec
+
+
+@pytest.mark.django_db
+def test_workers_health_query(client, setup):
+    ret = client.get(
+        reverse("lava.scheduler.workers"), {"worker_health": "Maintenance"}
+    )
+    assert ret.status_code == 200  # nosec
+    assert len(ret.context["worker_table"].data) == 1  # nosec
+    assert ret.context["worker_table"].data[0].hostname == "worker_:')-,;~"  # nosec
+
+
+@pytest.mark.django_db
+def test_workers_version_query(client, setup):
+    ret = client.get(reverse("lava.scheduler.workers"), {"worker_version": "2024.02"})
+    assert ret.status_code == 200  # nosec
+    assert len(ret.context["worker_table"].data) == 1  # nosec
+    assert ret.context["worker_table"].data[0].hostname == "worker-02"  # nosec
 
 
 @pytest.mark.django_db
@@ -1546,6 +1598,25 @@ def test_internal_v1_jobs_logs(client, setup, mocker):
     )
     assert ret.status_code == 413
     assert ret.content.decode("utf-8") == REQUEST_DATA_TOO_BIG_MSG
+
+
+@pytest.mark.django_db
+def test_internal_v1_500_error(client, setup, mocker):
+    job01 = TestJob.objects.get(description="test job 01")
+    job01.definition = "{"  # Simulate corrupted YAML
+    job01.save()
+
+    client.raise_request_exception = False
+    ret = client.get(
+        reverse("lava.scheduler.internal.v1.jobs", args=[job01.id]),
+        HTTP_LAVA_TOKEN=job01.token,
+        HTTP_ACCEPT="application/json",
+    )
+    assert ret.status_code == 500
+    error_dict = ret.json()
+
+    assert error_dict["exception_type"] == "ParserError"
+    assert "line" in error_dict["exception_value"]
 
 
 class TestInPlaceTokenUpdater:

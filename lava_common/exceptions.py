@@ -121,5 +121,5 @@ class PermissionNameError(LAVAServerError):
 
 
 class FastbootDeviceNotFound(LAVAError):
-    error_help = "FastbootDeviceNotFound: fastboot devices found."
+    error_help = "FastbootDeviceNotFound: fastboot device not found."
     error_type = "FastbootDeviceNotFound"

@@ -6,7 +6,6 @@
 
 import unittest
 from pathlib import Path
-from subprocess import CompletedProcess
 from unittest.mock import ANY, PropertyMock, patch
 
 from lava_common.exceptions import FastbootDeviceNotFound, InfrastructureError, JobError
@@ -14,7 +13,10 @@ from lava_dispatcher.actions.boot.fastboot import BootFastbootAction
 from lava_dispatcher.actions.deploy.fastboot import FastbootFlashAction
 from lava_dispatcher.utils.adb import OptionalContainerAdbAction
 from lava_dispatcher.utils.containers import DockerDriver
-from lava_dispatcher.utils.fastboot import OptionalContainerFastbootAction
+from lava_dispatcher.utils.fastboot import (
+    DetectFastbootDevice,
+    OptionalContainerFastbootAction,
+)
 from tests.lava_dispatcher.test_basic import Factory, LavaDispatcherTestCase
 
 
@@ -291,13 +293,8 @@ class TestFastbootDeployAutoDetection(LavaDispatcherTestCase):
         self.assertEqual(description_ref, self.job.pipeline.describe())
 
     @patch(
-        "lava_dispatcher.utils.fastboot.subprocess.run",
-        return_value=CompletedProcess(
-            ["/usr/bin/fastboot", "devices"],
-            0,
-            stdout="a2c22e48\tfastboot\n",
-            stderr="",
-        ),
+        "lava_dispatcher.utils.fastboot.DetectFastbootDevice.get_output_maybe_in_container",
+        return_value="a2c22e48\tfastboot\n",
     )
     @patch("time.sleep")
     def test_fastboot_auto_detection(self, *args):
@@ -306,7 +303,7 @@ class TestFastbootDeployAutoDetection(LavaDispatcherTestCase):
         self.assertIsNone(self.job.device.get("board_id"))
         self.assertEqual(self.job.device["device_info"], [{"board_id": "0000000000"}])
 
-        action = self.job.pipeline.actions[0].pipeline.actions[4]
+        action = self.job.pipeline.find_action(DetectFastbootDevice)
         action.run(None, None)
 
         self.assertEqual(self.job.device["fastboot_serial_number"], "a2c22e48")
@@ -315,17 +312,12 @@ class TestFastbootDeployAutoDetection(LavaDispatcherTestCase):
         self.assertEqual(self.job.device["device_info"], [{"board_id": "a2c22e48"}])
 
     @patch(
-        "lava_dispatcher.utils.fastboot.subprocess.run",
-        return_value=CompletedProcess(
-            ["/usr/bin/fastboot", "devices"],
-            0,
-            stdout="",
-            stderr="",
-        ),
+        "lava_dispatcher.utils.fastboot.DetectFastbootDevice.get_output_maybe_in_container",
+        return_value="",
     )
     @patch("time.sleep")
     def test_fastboot_auto_detection_none(self, *args):
-        action = self.job.pipeline.actions[0].pipeline.actions[4]
+        action = self.job.pipeline.find_action(DetectFastbootDevice)
 
         with self.assertRaises(FastbootDeviceNotFound) as context:
             action.run(None, None)
@@ -336,17 +328,12 @@ class TestFastbootDeployAutoDetection(LavaDispatcherTestCase):
         )
 
     @patch(
-        "lava_dispatcher.utils.fastboot.subprocess.run",
-        return_value=CompletedProcess(
-            ["/usr/bin/fastboot", "devices"],
-            0,
-            stdout="a2c22e48\tfastboot\n1de55d7f32c101b8\tfastboot\n",
-            stderr="",
-        ),
+        "lava_dispatcher.utils.fastboot.DetectFastbootDevice.get_output_maybe_in_container",
+        return_value="a2c22e48\tfastboot\n1de55d7f32c101b8\tfastboot\n",
     )
     @patch("time.sleep")
     def test_fastboot_auto_detection_multiple(self, *args):
-        action = self.job.pipeline.actions[0].pipeline.actions[4]
+        action = self.job.pipeline.find_action(DetectFastbootDevice)
 
         with self.assertRaises(JobError) as context:
             action.run(None, None)
@@ -357,19 +344,14 @@ class TestFastbootDeployAutoDetection(LavaDispatcherTestCase):
         )
 
     @patch(
-        "lava_dispatcher.utils.fastboot.subprocess.run",
-        return_value=CompletedProcess(
-            ["/usr/bin/fastboot", "devices"],
-            0,
-            stdout="a2c22e48\t fastboot\n",
-            stderr="",
-        ),
+        "lava_dispatcher.utils.fastboot.DetectFastbootDevice.get_output_maybe_in_container",
+        return_value="a2c22e48\t fastboot\n",
     )
     @patch("time.sleep")
     def test_fastboot_auto_detection_extra_whitespace(self, *args):
         self.assertEqual(self.job.device["fastboot_serial_number"], "0000000000")
 
-        action = self.job.pipeline.actions[0].pipeline.actions[4]
+        action = self.job.pipeline.find_action(DetectFastbootDevice)
         action.run(None, None)
 
         self.assertEqual(self.job.device["fastboot_serial_number"], "a2c22e48")

@@ -353,6 +353,39 @@ class TestUUUbootAction(
             )
 
     @patch("time.sleep", Mock())
+    def test_run_cmd_format(self):
+        job = self.factory.create_imx8mq_job(
+            "imx8mq-evk-02", "sample_jobs/uuu-bootimage-only.yaml"
+        )
+        action = UUUBootAction(job)
+        action.uuu = "/bin/uuu"
+
+        def mocked_get_namespace_data(*args, **kwargs):
+            if kwargs.get("key") == "images_names":
+                return ["boot"]
+            if kwargs.get("label") == "boot":
+                return "image.boot"
+
+        action.get_namespace_data = MagicMock(side_effect=mocked_get_namespace_data)
+
+        action.parameters["commands"] = [{"SDP": "boot -f {boot}"}]
+
+        action.run_uuu = MagicMock(return_value=0)
+        action.run_bcu = MagicMock(return_value=0)
+        action.cleanup_required = False
+
+        action.run(connection=None, max_end_time=None)
+
+        action.run_uuu.assert_called_with(
+            ["/bin/uuu", "-m", "1:14", "SDP:", "boot", "-f", "image.boot"],
+            allow_fail=False,
+            error_msg="Fail UUUBootAction on cmd : SDP: boot -f image.boot",
+        )
+
+        action.cleanup(connection=None)
+        action.run_bcu.assert_not_called()
+
+    @patch("time.sleep", Mock())
     def test_run_single_path(self):
         job = self.factory.create_imx8mq_job(
             "imx8mq-evk-02", "sample_jobs/uuu-bootimage-only.yaml"
@@ -577,7 +610,7 @@ class TestUUUActionDriver(LavaDispatcherTestCase):
         )
 
     @patch.object(OptionalContainerUuuAction, "run_cmd")
-    @patch("lava_dispatcher.utils.docker.DockerRun.__check_image_arch__")
+    @patch("lava_dispatcher.utils.docker.DockerRun._check_image_arch")
     def test_docker_uuu_local_validate(self, _, mock_cmd):
         uuu_device_parameters = {
             "docker_image": "atline/uuu:1.3.191",
@@ -588,7 +621,7 @@ class TestUUUActionDriver(LavaDispatcherTestCase):
         mock_cmd.assert_called_with(["docker", "pull", "atline/uuu:1.3.191"])
 
     @patch.object(OptionalContainerUuuAction, "run_cmd")
-    @patch("lava_dispatcher.utils.docker.DockerRun.__check_image_arch__")
+    @patch("lava_dispatcher.utils.docker.DockerRun._check_image_arch")
     def test_docker_uuu_remote_validate(self, _, mock_cmd):
         uuu_device_parameters = {
             "docker_image": "atline/uuu:1.3.191",

@@ -113,8 +113,7 @@ def test_run_architecture_check_failure(mocker):
             raise RuntimeError(f"Unexpected mock call: {cmd}")
 
     check_output = mocker.patch("subprocess.check_output", side_effect=results)
-    getLogger = mocker.patch("logging.getLogger")
-    logger = getLogger.return_value
+
     action = mocker.MagicMock()
 
     action = mocker.MagicMock()
@@ -130,8 +129,7 @@ def test_run_architecture_check_failure(mocker):
         call(["docker", "run", "--rm", "--init", "myimage", "date"], error_msg=None),
     ]
 
-    getLogger.assert_called_with("dispatcher")
-    logger.warning.assert_called()
+    action.logger.warning.assert_called()
 
 
 def test_run_architecture_check_success(mocker):
@@ -157,7 +155,7 @@ def test_run_architecture_check_success(mocker):
 
 def test_run_with_action(mocker):
     check_arch = mocker.patch(
-        "lava_dispatcher.utils.docker.DockerRun.__check_image_arch__"
+        "lava_dispatcher.utils.docker.DockerRun._check_image_arch"
     )
     action = mocker.MagicMock()
 
@@ -176,7 +174,7 @@ def test_run_with_action(mocker):
 
 
 def test_run_with_local_image_does_not_pull(mocker):
-    mocker.patch("lava_dispatcher.utils.docker.DockerRun.__check_image_arch__")
+    mocker.patch("lava_dispatcher.utils.docker.DockerRun._check_image_arch")
     docker = DockerRun("myimage")
     docker.local(True)
     action = mocker.MagicMock()
@@ -203,7 +201,7 @@ def test_run_with_local_image_does_not_pull(mocker):
 
 
 def test_run_with_local_image_does_not_pull_when_missing(mocker):
-    mocker.patch("lava_dispatcher.utils.docker.DockerRun.__check_image_arch__")
+    mocker.patch("lava_dispatcher.utils.docker.DockerRun._check_image_arch")
     docker = DockerRun("myimage")
     docker.local(True)
     action = mocker.MagicMock()
@@ -233,15 +231,17 @@ def test_run_with_local_image_does_not_pull_when_missing(mocker):
 def test_from_parameters_image(mocker):
     job = mocker.MagicMock()
     assert DockerRun.from_parameters({"image": "foo"}, job).image == "foo"
-    assert not DockerRun.from_parameters({"image": "foo"}, job).__local__
-    assert DockerRun.from_parameters({"image": "foo", "local": True}, job).__local__
+    assert not DockerRun.from_parameters({"image": "foo"}, job)._is_local_image
+    assert DockerRun.from_parameters(
+        {"image": "foo", "local": True}, job
+    )._is_local_image
 
 
 def test_from_parameters_suffix(mocker):
     job = mocker.MagicMock()
     job.job_id = "123"
     docker_run = DockerRun.from_parameters({"image": "foo"}, job)
-    assert docker_run.__suffix__ == "-lava-123"
+    assert docker_run._suffix == "-lava-123"
 
 
 def test_from_parameters_name_network(mocker):
@@ -256,7 +256,7 @@ def test_from_parameters_name_network(mocker):
         job,
     )
     assert docker_run._container_name == "foocontainer-lava-123"
-    assert docker_run.__network__ == "othercontainer"
+    assert docker_run._network_name == "othercontainer"
 
 
 def test_wait(mocker):
@@ -291,8 +291,8 @@ def test_add_device_method_options():
             "options": ["--cap-add=NET_ADMIN"],
         }
     )
-    assert "--debug" in docker.__docker_options__
-    assert "--cap-add=NET_ADMIN" in docker.__docker_run_options__
+    assert "--debug" in docker._docker_options
+    assert "--cap-add=NET_ADMIN" in docker._docker_run_options
 
 
 def test_add_device_method_options_none():
@@ -303,8 +303,8 @@ def test_add_device_method_options_none():
             "options": [None],
         }
     )
-    assert None not in docker.__docker_options__
-    assert None not in docker.__docker_run_options__
+    assert None not in docker._docker_options
+    assert None not in docker._docker_run_options
 
 
 def test_add_device_method_options_sublist():
@@ -315,5 +315,5 @@ def test_add_device_method_options_sublist():
         }
     )
 
-    assert "--network" in docker.__docker_run_options__
-    assert "host" in docker.__docker_run_options__
+    assert "--network" in docker._docker_run_options
+    assert "host" in docker._docker_run_options

@@ -268,9 +268,11 @@ class DownloadHandler(Action):
             return (
                 condition,
                 downloaded_sz,
-                "progress %d MB" % (int(downloaded_sz / (1024 * 1024)))
-                if condition
-                else "",
+                (
+                    "progress %d MB" % (int(downloaded_sz / (1024 * 1024)))
+                    if condition
+                    else ""
+                ),
             )
 
         def progress_known_total(downloaded_sz, last_val, last_update):
@@ -282,10 +284,12 @@ class DownloadHandler(Action):
             return (
                 condition,
                 percent,
-                "progress %3d %% (%d MB)"
-                % (percent, int(downloaded_sz / (1024 * 1024)))
-                if condition
-                else "",
+                (
+                    "progress %3d %% (%d MB)"
+                    % (percent, int(downloaded_sz / (1024 * 1024)))
+                    if condition
+                    else ""
+                ),
             )
 
         connection = super().run(connection, max_end_time)
@@ -475,7 +479,7 @@ class DownloadHandler(Action):
                     value=os.path.join(*_path_dirs),
                 )
             else:
-                raise JobError(f"'{self.key}' path prefix is required but not found")
+                raise JobError(f"{self.key!r} path prefix is required but not found")
 
         # xnbd protocol needs to know the location
         nbdroot = self.get_namespace_data(
@@ -630,7 +634,7 @@ class HttpDownloadAction(DownloadHandler):
                     # Cache server available
                     return
                 elif not fallback_origin_url:
-                    self.errors = f"Unable to get '{self.url.geturl()}'"
+                    self.errors = f"Unable to get {self.url.geturl()!r}"
                     return
                 self.url = original_url
                 self.logger.info("Fallback to original URL : %s", self.url.geturl())
@@ -873,7 +877,7 @@ class PreDownloadedAction(Action):
                     value=os.path.join(*_path_dirs),
                 )
             else:
-                raise JobError(f"'{self.key}' path prefix is required but not found")
+                raise JobError(f"{self.key!r} path prefix is required but not found")
 
         if "lava-xnbd" in self.parameters and str(self.key) == "nbdroot":
             self.parameters["lava-xnbd"]["nbdroot"] = str(dest)

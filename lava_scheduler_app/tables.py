@@ -10,6 +10,7 @@ import django_tables2 as tables
 from django.conf import settings
 from django.contrib.admin.models import LogEntry
 from django.contrib.humanize.templatetags.humanize import naturaltime
+from django.db.models.functions import Lower
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.timesince import timesince
@@ -145,7 +146,7 @@ class TagsColumn(tables.Column):
             return ""
 
         tags_html: list[str] = []
-        for tag_description, tag_name in tags_query:
+        for tag_description, tag_name in tags_query.order_by(Lower("name")):
             if tag_description:
                 tags_html.append(
                     format_html(
@@ -221,6 +222,7 @@ class DeviceTypeOverviewTable(LavaTable):
     class Meta(LavaTable.Meta):
         model = Device
         fields = ()
+        queries = {"device_type_query": "device_type"}
 
 
 class DeviceTable(LavaTable):
@@ -371,6 +373,12 @@ class WorkerTable(LavaTable):
         model = Worker
         sequence = ["hostname", "state", "health", "description"]
         exclude = ["token"]
+        searches = {"hostname": "contains"}
+        queries = {
+            "worker_state_query": "state",
+            "worker_health_query": "health",
+            "worker_version_query": "version",
+        }
 
 
 class LogEntryTable(LavaTable):

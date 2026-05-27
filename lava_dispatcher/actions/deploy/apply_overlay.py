@@ -26,6 +26,7 @@ from lava_dispatcher.utils.compression import (
     untar_file,
 )
 from lava_dispatcher.utils.filesystem import (
+    _resolve_backend,
     copy_in_overlay,
     copy_overlay_to_sparse_fs,
     is_sparse_image,
@@ -142,9 +143,7 @@ class ApplyOverlayImage(Action):
                         )
                     else:
                         raise JobError(
-                            "Unable to find image configuration for '{image}'".format(
-                                image=self.image_key
-                            )
+                            f"Unable to find image configuration for {self.image_key!r}"
                         )
                 else:
                     root_partition = self.parameters[self.image_key].get(
@@ -157,7 +156,7 @@ class ApplyOverlayImage(Action):
                     )
                 self.logger.debug("root_partition: %s", root_partition)
 
-            copy_in_overlay(decompressed_image, root_partition, overlay_file)
+            copy_in_overlay(self, decompressed_image, root_partition, overlay_file)
         else:
             self.logger.debug("No overlay to deploy")
         return connection
@@ -206,7 +205,7 @@ class ApplyOverlaySparseImage(Action):
             command_list, error_msg="simg2img failed for %s" % decompressed_image
         )
         self.logger.debug("Copying overlay")
-        copy_overlay_to_sparse_fs(ext4_img, overlay_file)
+        copy_overlay_to_sparse_fs(self, ext4_img, overlay_file)
         command_list = ["/usr/bin/img2simg", ext4_img, decompressed_image]
         self.run_cmd(command_list, error_msg="img2simg failed for %s" % ext4_img)
         os.remove(ext4_img)
@@ -829,11 +828,18 @@ class AppendOverlays(Action):
         if self.params["format"] == "cpio.newc":
             self.update_cpio()
         elif self.params["format"] == "ext4":
-            try:
-                self.update_guestfs()
-            except RuntimeError as exc:
-                self.logger.exception(str(exc))
-                raise JobError("Unable to update image %s: %r" % (self.key, str(exc)))
+            backend = _resolve_backend(self.params)
+            self.logger.info("Using %s backend for overlay injection", backend)
+            if backend == "guestfs":
+                try:
+                    self.update_guestfs()
+                except RuntimeError as exc:
+                    self.logger.exception(str(exc))
+                    raise JobError(
+                        "Unable to update image %s: %r" % (self.key, str(exc))
+                    )
+            else:
+                self.update_ext4()
         elif self.params["format"] == "tar":
             self.update_tar()
         else:
@@ -915,6 +921,85 @@ class AppendOverlays(Action):
 
     def update_tar(self):
         self._update(untar_file, partial(create_tarfile, arcname="."))
+
+    def update_ext4(self):
+        import tempfile
+
+        from lava_dispatcher.utils.ext4 import (
+            extract_partition,
+            inject_file,
+            inject_tar,
+            write_partition_back,
+        )
+
+        image = self.get_namespace_data(
+            action="download-action", label=self.key, key="file"
+        )
+        partition = self.params.get("partition", None)
+        self.logger.info("Modifying %r", image)
+
+        if self.params.get("sparse", False):
+            self.logger.debug("Calling simg2img on %r", image)
+            command_list = ["/usr/bin/simg2img", image, f"{image}.non-sparse"]
+            self.run_cmd(command_list, error_msg="simg2img failed for %s" % image)
+            os.replace(f"{image}.non-sparse", image)
+
+        target_image = image
+        start = 0
+        sector_size = 512
+        with tempfile.TemporaryDirectory(prefix="lava-part-") as tmpdir:
+            if partition is not None:
+                part_file, start, sector_size = extract_partition(
+                    image, partition, tmpdir
+                )
+                target_image = part_file
+
+            self.logger.debug("Overlays:")
+            for overlay in self.params["overlays"]:
+                label = "%s.%s" % (self.key, overlay)
+                overlay_image = None
+                if overlay == "lava":
+                    overlay_image = self.get_namespace_data(
+                        action="compress-overlay", label="output", key="file"
+                    )
+                    lava_test_results_dir = self.get_namespace_data(
+                        action="test", label="results", key="lava_test_results_dir"
+                    )
+                    path = os.path.dirname(lava_test_results_dir or "/")
+                    compress = "gzip"
+                else:
+                    overlay_image = self.get_namespace_data(
+                        action="download-action", label=label, key="file"
+                    )
+                    path = self.params["overlays"][overlay]["path"]
+                    compress = None
+                if overlay_image:
+                    self.logger.debug("- %s: %r to %r", label, overlay_image, path)
+                    if (
+                        overlay == "lava"
+                        or self.params["overlays"][overlay]["format"] == "tar"
+                    ):
+                        inject_tar(target_image, overlay_image, path, compress=compress)
+                    else:
+                        inject_file(target_image, overlay_image, path)
+                    if overlay == "lava":
+                        self.set_namespace_data(
+                            action=self.name,
+                            label="result",
+                            key="applied",
+                            value=True,
+                        )
+                else:
+                    self.logger.warning("- %s: <MISSING> to %r", label, path)
+
+            if partition is not None:
+                write_partition_back(image, target_image, start, sector_size)
+
+        if self.params.get("sparse", False):
+            self.logger.debug("Calling img2simg on %r", image)
+            command_list = ["/usr/bin/img2simg", image, f"{image}.sparse"]
+            self.run_cmd(command_list, error_msg="img2simg failed for %s" % image)
+            os.replace(f"{image}.sparse", image)
 
     def update_guestfs(self):
         image = self.get_namespace_data(
@@ -1084,7 +1169,7 @@ class ApplyOverlayAvh(Action):
             zf.extractall(tempdir)
 
         storage_file_path = f"{tempdir}/{self.storage_file}"
-        copy_in_overlay(storage_file_path, self.root_partition, overlay_file)
+        copy_in_overlay(self, storage_file_path, self.root_partition, overlay_file)
 
         shutil.make_archive(fw_package_path[:-4], "zip", tempdir)
 

@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import atexit
 import glob
-import logging
 import os
 import shutil
+import subprocess
 import tarfile
 import tempfile
 from typing import TYPE_CHECKING
@@ -105,14 +105,32 @@ def write_bootscript(commands: list[str], filename: str | Path) -> None:
         bootscript.close()
 
 
-def _launch_guestfs(guest: Any) -> None:
+def _launch_guestfs(action: Action, guest: Any) -> None:
     # Launch guestfs and raise an InfrastructureError if needed
     try:
         guest.launch()
     except RuntimeError as exc:
-        logger = logging.getLogger("dispatcher")
-        logger.exception(str(exc))
+        action.logger.exception(str(exc))
         raise InfrastructureError("Unable to start libguestfs")
+
+
+def _resolve_backend(params: dict[str, Any] | None = None) -> str:
+    import importlib.util
+
+    backend = "auto"
+    if params is not None:
+        backend = params.get("overlay_backend", "auto")
+    if backend == "e2fsprogs":
+        return "e2fsprogs"
+    if backend == "guestfs":
+        return "guestfs"
+    if shutil.which("debugfs"):
+        return "e2fsprogs"
+    if importlib.util.find_spec("guestfs") is not None:
+        return "guestfs"
+    raise InfrastructureError(
+        "Neither debugfs (e2fsprogs) nor python3-guestfs is available"
+    )
 
 
 @replace_exception(RuntimeError, JobError)
@@ -131,12 +149,49 @@ def prepare_guestfs(
     :param size: size of the filesystem in Mb
     :return blkid of the guest device
     """
+    if _resolve_backend() == "e2fsprogs":
+        from lava_dispatcher.utils.ext4 import create_ext4, inject_tar
+
+        raw_img = output + ".raw"
+        uuid = create_ext4(raw_img, size)
+
+        tar_output = action.mkdtemp()
+        tarball = tarfile.open(overlay)
+        tarball.extractall(tar_output)
+        guest_dir = action.mkdtemp()
+        guest_tar = os.path.join(guest_dir, "guest.tar")
+        root_tar = tarfile.open(guest_tar, "w")
+
+        results_dir_list = os.path.split(os.path.normpath(mountpoint))
+        sub_dir = os.path.join(tar_output, results_dir_list[1])
+        for dirname in os.listdir(sub_dir):
+            root_tar.add(os.path.join(sub_dir, dirname), arcname=dirname)
+
+        root_tar.close()
+        inject_tar(raw_img, guest_tar)
+        os.unlink(guest_tar)
+
+        try:
+            subprocess.run(
+                ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", raw_img, output],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise InfrastructureError("qemu-img convert failed: %s" % exc.stderr[:500])
+        finally:
+            if os.path.exists(raw_img):
+                os.unlink(raw_img)
+
+        return uuid
+
     import guestfs  # type: ignore[import-not-found]
 
     guest = guestfs.GuestFS(python_return_dict=True)
     guest.disk_create(output, "qcow2", size * 1024 * 1024)
     guest.add_drive_opts(output, format="qcow2", readonly=False)
-    _launch_guestfs(guest)
+    _launch_guestfs(action, guest)
     devices = guest.list_devices()
     if len(devices) != 1:
         raise InfrastructureError("Unable to prepare guestfs")
@@ -169,7 +224,7 @@ def prepare_guestfs(
 
 
 @replace_exception(RuntimeError, JobError)
-def prepare_install_base(output: str, size: int) -> None:
+def prepare_install_base(action: Action, output: str, size: int) -> None:
     """
     Create an empty image of the specified size (in bytes),
     ready for an installer to partition, create filesystem(s)
@@ -180,7 +235,7 @@ def prepare_install_base(output: str, size: int) -> None:
     guest = guestfs.GuestFS(python_return_dict=True)
     guest.disk_create(output, "raw", size)
     guest.add_drive_opts(output, format="raw", readonly=False)
-    _launch_guestfs(guest)
+    _launch_guestfs(action, guest)
     devices = guest.list_devices()
     if len(devices) != 1:
         raise InfrastructureError("Unable to prepare guestfs")
@@ -188,7 +243,9 @@ def prepare_install_base(output: str, size: int) -> None:
 
 
 @replace_exception(RuntimeError, JobError)
-def copy_out_files(image: str, filenames: list[str], destination: str) -> None:
+def copy_out_files(
+    action: Action, image: str, filenames: list[str], destination: str
+) -> None:
     """
     Copies a list of files out of the image to the specified
     destination which must exist. Launching the guestfs is
@@ -199,11 +256,25 @@ def copy_out_files(image: str, filenames: list[str], destination: str) -> None:
     if not isinstance(filenames, list):
         raise LAVABug("filenames must be a list")
 
+    if _resolve_backend() == "e2fsprogs":
+        import magic
+
+        filetype = magic.from_file(image).split(",")[0]
+        if "ISO 9660" in filetype:
+            from lava_dispatcher.utils.ext4 import copy_out_iso
+
+            copy_out_iso(image, filenames, destination)
+        else:
+            from lava_dispatcher.utils.ext4 import copy_out
+
+            copy_out(image, filenames, destination)
+        return
+
     import guestfs
 
     guest = guestfs.GuestFS(python_return_dict=True)
     guest.add_drive_ro(image)
-    _launch_guestfs(guest)
+    _launch_guestfs(action, guest)
     devices = guest.list_devices()
     if len(devices) != 1:
         raise InfrastructureError("Unable to prepare guestfs")
@@ -214,18 +285,42 @@ def copy_out_files(image: str, filenames: list[str], destination: str) -> None:
 
 
 @replace_exception(RuntimeError, JobError)
-def copy_in_overlay(image: str, root_partition: str | None, overlay: str) -> None:
+def copy_in_overlay(
+    action: Action, image: str, root_partition: str | None, overlay: str
+) -> None:
     """
     Mounts test image partition as specified by the test
     writer and extracts overlay at the root, if root_partition
     is None the image is handled as a filesystem instead of
     partitioned image.
     """
+    if _resolve_backend() == "e2fsprogs":
+        from lava_dispatcher.utils.ext4 import (
+            extract_partition,
+            inject_tar,
+            write_partition_back,
+        )
+
+        if os.path.exists(overlay[:-3]):
+            os.unlink(overlay[:-3])
+        decompressed_overlay = decompress_file(overlay, "gz")
+
+        if root_partition is not None:
+            with tempfile.TemporaryDirectory(prefix="lava-part-") as tmpdir:
+                part_file, start, sector_size = extract_partition(
+                    image, int(root_partition), tmpdir
+                )
+                inject_tar(part_file, decompressed_overlay)
+                write_partition_back(image, part_file, start, sector_size)
+        else:
+            inject_tar(image, decompressed_overlay)
+        return
+
     import guestfs
 
     guest = guestfs.GuestFS(python_return_dict=True)
     guest.add_drive(image)
-    _launch_guestfs(guest)
+    _launch_guestfs(action, guest)
 
     if root_partition is not None:
         partitions = guest.list_partitions()
@@ -267,18 +362,47 @@ def dispatcher_download_dir(dispatcher_config: dict[str, Any]) -> str:
 
 
 @replace_exception(RuntimeError, JobError)
-def copy_overlay_to_sparse_fs(image: str, overlay: str) -> None:
+def copy_overlay_to_sparse_fs(action: Action, image: str, overlay: str) -> None:
     """copy_overlay_to_sparse_fs
 
     Only copies the overlay to an image
     which has already been converted from sparse.
     """
-    logger = logging.getLogger("dispatcher")
+    if _resolve_backend() == "e2fsprogs":
+        from lava_dispatcher.utils.ext4 import inject_tar
+
+        if os.path.exists(overlay[:-3]):
+            os.unlink(overlay[:-3])
+        decompressed_overlay = decompress_file(overlay, "gz")
+        inject_tar(image, decompressed_overlay)
+
+        result = subprocess.run(
+            ["dumpe2fs", "-h", image], capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            action.logger.warning(
+                "dumpe2fs failed for %s (rc=%d), skipping free space check",
+                image,
+                result.returncode,
+            )
+            return
+        free_blocks = 0
+        block_size = 4096
+        for line in result.stdout.splitlines():
+            if line.startswith("Free blocks:"):
+                free_blocks = int(line.split(":")[1].strip())
+            elif line.startswith("Block size:"):
+                block_size = int(line.split(":")[1].strip())
+        available_kb = (free_blocks * block_size) // 1024
+        if available_kb == 0:
+            raise JobError("No space in image after applying overlay: %s" % image)
+        return
+
     import guestfs
 
     guest = guestfs.GuestFS(python_return_dict=True)
     guest.add_drive(image)
-    _launch_guestfs(guest)
+    _launch_guestfs(action, guest)
     devices = guest.list_devices()
     if not devices:
         raise InfrastructureError("Unable to prepare guestfs")
@@ -292,7 +416,7 @@ def copy_overlay_to_sparse_fs(image: str, overlay: str) -> None:
     guest.tar_in(decompressed_overlay, "/")
     # Check if we have space left on the mounted image.
     output = guest.df()
-    logger.debug(output)
+    action.logger.debug(output)
     _, _, _, available, percent, _ = output.split("\n")[1].split()
     guest.umount(devices[0])
     guest.close()
@@ -300,15 +424,14 @@ def copy_overlay_to_sparse_fs(image: str, overlay: str) -> None:
         raise JobError("No space in image after applying overlay: %s" % image)
 
 
-def copy_directory_contents(root_dir: str, dst_dir: str) -> None:
+def copy_directory_contents(action: Action, root_dir: str, dst_dir: str) -> None:
     """
     Copies the contents of the root directory to the destination directory
     but excludes the root directory's top level folder
     """
     files_to_copy = glob.glob(os.path.join(root_dir, "*"))
-    logger = logging.getLogger("dispatcher")
     for fname in files_to_copy:
-        logger.debug(
+        action.logger.debug(
             "copying %s to %s", fname, os.path.join(dst_dir, os.path.basename(fname))
         )
         if os.path.isdir(fname):
@@ -317,19 +440,18 @@ def copy_directory_contents(root_dir: str, dst_dir: str) -> None:
             shutil.copy(fname, dst_dir)
 
 
-def remove_directory_contents(root_dir: str) -> None:
+def remove_directory_contents(action: Action, root_dir: str) -> None:
     """
     Removes the contents of the root directory but not the root itself
     """
     files_to_remove = list(glob.glob(os.path.join(root_dir, "*")))
     files_to_remove += list(glob.glob(os.path.join(root_dir, ".*")))
-    logger = logging.getLogger("dispatcher")
     for fname in sorted(files_to_remove):
         if os.path.isdir(fname):
-            logger.debug("removing %s/", fname)
+            action.logger.debug("removing %s/", fname)
             shutil.rmtree(fname)
         else:
-            logger.debug("removing %s", fname)
+            action.logger.debug("removing %s", fname)
             os.remove(fname)
 
 
