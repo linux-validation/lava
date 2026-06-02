@@ -16,6 +16,10 @@ on:
       component:
         required: true
         type: string
+    outputs:
+      image_tag:
+        description: "Computed LAVA image tag (from lava_common/version.py)"
+        value: ${{ jobs.lava-docker-build.outputs.image_tag }}
 
 env:
   CI_REGISTRY: ghcr.io
@@ -24,6 +28,8 @@ env:
 jobs:
   lava-docker-build:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.version.outputs.image_tag }}
     container:
       image: docker:24
       env:
@@ -41,7 +47,9 @@ jobs:
       - run: git config --global --add safe.directory $PWD
       - run: docker login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} $CI_REGISTRY
       - run: git describe
-      - run: ./lava_common/version.py
+      - name: Compute image tag
+        id: version
+        run: echo "image_tag=$(./lava_common/version.py)" >> "$GITHUB_OUTPUT"
       - run: ./.gitlab-ci/${{ inputs.ci_job_stage }}/docker.sh "${{ inputs.component }}"
         env:
           CI_JOB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
