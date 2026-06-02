@@ -1,0 +1,84 @@
+# Install this file as:
+#   .github/workflows/update-factory-staging.yml
+# on the NEWEST qualcomm-* branch of github.com/linux-validation/lava
+#
+# It is a reusable workflow, called from run-all-docker-builds.yml after the
+# image build finishes. It computes the tag the build produced and commits it
+# into the lava-server factory's staging docker-compose (source.foundries.io),
+# which triggers the Foundries OTA rollout to lava-staging.infra.foundries.io.
+#
+# Required GitHub Actions secret (repo: linux-validation/lava):
+#   FIO_API_TOKEN  - a Foundries.io API token with source read+update scope
+#                    (https://app.foundries.io/settings/tokens/)
+#
+name: Update LAVA factory (staging)
+
+on:
+  # Called by run-all-docker-builds.yml once the build jobs succeed.
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (provided by the build job)"
+        required: true
+        type: string
+  # Manual run. The image must already exist in GHCR for a manual deploy.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g. 2026.05-qualcomm-2026.05-8-5dc6de1bb)"
+        required: true
+
+# Never let two updates of the same branch race each other.
+concurrency:
+  group: update-factory-staging-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # GHCR image that all lava services in the factory compose share.
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/lava-server-amd64
+  # Foundries factory containers repo to update (staging branch, hardcoded below).
+  FACTORY_REPO: source.foundries.io/factories/lava-server/containers.git
+  COMPOSE_PATH: lava-server/docker-compose.yml
+
+jobs:
+  update-factory-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update factory staging docker-compose
+        env:
+          FIO_API_TOKEN: ${{ secrets.FIO_API_TOKEN }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "No image_tag provided (it must come from the build job)." >&2
+            exit 1
+          fi
+          NEW_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+
+          # Authenticate to source.foundries.io per Foundries git-config docs
+          # (API token with source-code access, sent as a basic auth header):
+          # https://docs.foundries.io/88/getting-started/git-config/
+          git config --global http.https://source.foundries.io.extraheader \
+            "Authorization: basic $(printf '%s' "${FIO_API_TOKEN}" | openssl base64)"
+
+          git clone --branch staging --depth 1 \
+            "https://${FACTORY_REPO}" factory
+          cd factory
+
+          # Replace the tag on every line referencing the lava-server image.
+          sed -i -E "s|(${IMAGE_NAME}):[^[:space:]]+|\\1:${IMAGE_TAG}|g" "${COMPOSE_PATH}"
+
+          if git diff --quiet -- "${COMPOSE_PATH}"; then
+            echo "docker-compose already on ${NEW_IMAGE}; nothing to do."
+            exit 0
+          fi
+
+          echo "Updated image references:"
+          grep -n "${IMAGE_NAME}" "${COMPOSE_PATH}" || true
+
+          git config user.name  "lava-factory-bot"
+          git config user.email "ci@linux-validation"
+          git add "${COMPOSE_PATH}"
+          git commit -m "Update staging to ${IMAGE_TAG}"
+          git push origin staging
