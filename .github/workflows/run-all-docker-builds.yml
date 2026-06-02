@@ -18,3 +18,19 @@ jobs:
       component: ${{ matrix.component }}
       arch: ${{ matrix.arch }}
 
+  update-factory-staging:
+    needs: run-all-docker-build-jobs
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'qualcomm-20')
+    uses: ./.github/workflows/update-factory-staging.yml
+    with:
+      image_tag: ${{ needs.run-all-docker-build-jobs.outputs.image_tag }}
+    secrets: inherit
+
+  update-dispatcher-factory-staging:
+    needs: run-all-docker-build-jobs
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'qualcomm-20')
+    uses: ./.github/workflows/update-dispatcher-factory-staging.yml
+    with:
+      image_tag: ${{ needs.run-all-docker-build-jobs.outputs.image_tag }}
+    secrets: inherit
+
