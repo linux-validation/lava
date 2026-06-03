@@ -4,7 +4,7 @@ permissions:
     id-token: write
     packages: write
 
-name: Run all LAVA docker builds
+name: Run all LAVA tests and docker builds
 on: [workflow_dispatch, push, pull_request]
 jobs:
   run-all-docker-build-jobs:
@@ -18,8 +18,23 @@ jobs:
       component: ${{ matrix.component }}
       arch: ${{ matrix.arch }}
 
+  run-all-test-jobs:
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [dispatcher, server]
+        distro: [debian]
+        arch: [amd64]
+        version: [12, 13]
+    uses: ./.github/workflows/generic-lava-test-job.yml
+    with:
+      component: ${{ matrix.component }}
+      distro: ${{ matrix.distro }}
+      arch: ${{ matrix.arch }}
+      version: ${{ matrix.version }}
+
   update-factory-staging:
-    needs: run-all-docker-build-jobs
+    needs: [run-all-docker-build-jobs, run-all-test-jobs]
     if: github.event_name == 'push' && startsWith(github.ref_name, 'qualcomm-20')
     uses: ./.github/workflows/update-factory-staging.yml
     with:
@@ -27,7 +42,7 @@ jobs:
     secrets: inherit
 
   update-dispatcher-factory-staging:
-    needs: run-all-docker-build-jobs
+    needs: [run-all-docker-build-jobs, run-all-test-jobs]
     if: github.event_name == 'push' && startsWith(github.ref_name, 'qualcomm-20')
     uses: ./.github/workflows/update-dispatcher-factory-staging.yml
     with:
