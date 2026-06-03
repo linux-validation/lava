@@ -87,10 +87,6 @@ class QDLAction(Action):
             label="directory-decompress",
             key="directory-decompress",
         )
-<<<<<<< HEAD
-        self.logger.debug(f"compressed: {qcomflash_decompressed}")
-=======
->>>>>>> boot-to-qdl
         if qcomflash_decompressed:
             return connection
 
