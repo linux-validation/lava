@@ -1236,7 +1236,7 @@ class ApplyQDLOverlay(Action):
         untar_file(out_path, qdl_dir)
 
         # ToDo: modify overlay to include proper path?
-        copy_in_overlay(f"{qdl_dir}/{self.rootfs_image}", None, overlay_file)
+        copy_in_overlay(self, f"{qdl_dir}/{self.rootfs_image}", None, overlay_file)
 
         self.set_namespace_data(
             action="qdl-deploy",
