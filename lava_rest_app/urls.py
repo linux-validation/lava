@@ -9,6 +9,7 @@ from django.urls import re_path
 
 from lava_rest_app.v02.routers import router as router_v02
 from lava_rest_app.v02.views import LavaObtainAuthToken
+from lava_rest_app.v03.routers import extra_urls as extra_urls_v03
 from lava_rest_app.v03.routers import router as router_v03
 
 from . import versions
@@ -16,6 +17,7 @@ from . import versions
 urlpatterns = [
     re_path(r"^(?P<version>(v0.2))/", include(router_v02.urls)),
     re_path(r"^(?P<version>(v0.3))/", include(router_v03.urls)),
+    re_path(r"^(?P<version>(v0.3))/", include(extra_urls_v03)),
     re_path(
         r"^^(?P<version>(%s))/token/" % versions.urlpattern(),
         LavaObtainAuthToken.as_view(),
