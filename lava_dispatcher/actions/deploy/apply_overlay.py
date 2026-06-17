@@ -971,10 +971,7 @@ class AppendOverlays(Action):
                     overlay_image = self.get_namespace_data(
                         action="compress-overlay", label="output", key="file"
                     )
-                    lava_test_results_dir = self.get_namespace_data(
-                        action="test", label="results", key="lava_test_results_dir"
-                    )
-                    path = os.path.dirname(lava_test_results_dir or "/")
+                    path = os.path.dirname("/")
                     compress = "gzip"
                 else:
                     overlay_image = self.get_namespace_data(
@@ -1051,10 +1048,7 @@ class AppendOverlays(Action):
                 overlay_image = self.get_namespace_data(
                     action="compress-overlay", label="output", key="file"
                 )
-                lava_test_results_dir = self.get_namespace_data(
-                    action="test", label="results", key="lava_test_results_dir"
-                )
-                path = os.path.dirname(lava_test_results_dir or "/")
+                path = os.path.dirname("/")
                 compress = "gzip"
             else:
                 overlay_image = self.get_namespace_data(
