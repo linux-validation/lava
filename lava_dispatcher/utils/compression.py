@@ -112,10 +112,14 @@ def create_tarfile(indir: str, outfile: str, arcname: str | None = None) -> None
         raise InfrastructureError("Unable to create lava overlay tarball: %s" % exc)
 
 
-def untar_file(infile: str, outdir: str) -> None:
+def untar_file(infile: str, outdir: str, strip_components: int = 0) -> None:
+    os.makedirs(outdir, exist_ok=True)
+    args = ["tar", "-xf", infile]
+    if strip_components:
+        args.append(f"--strip-components={strip_components}")
     try:
         subprocess.run(
-            args=("tar", "-xf", infile),
+            args=args,
             check=True,
             stderr=subprocess.PIPE,
             encoding="utf-8",
