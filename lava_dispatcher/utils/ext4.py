@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 
 DEBUGFS_BATCH_SIZE = 256
-DD_BLOCK_SIZE = "4M"
 
 _DEBUGFS_ERROR_RE = re.compile(
     r"^(debugfs|ext2fs_\w+|mkdir|write|ln|symlink|dump|sif|close|Fatal error):"
@@ -374,10 +373,9 @@ def extract_partition(
                 "dd",
                 "if=%s" % image,
                 "of=%s" % part_file,
-                "bs=%s" % DD_BLOCK_SIZE,
-                "skip=%d" % (start * sector_size),
-                "count=%d" % (size * sector_size),
-                "iflag=skip_bytes,count_bytes",
+                "bs=%d" % sector_size,
+                "skip=%d" % start,
+                "count=%d" % size,
                 "status=none",
             ],
             check=True,
@@ -400,9 +398,8 @@ def write_partition_back(
                 "dd",
                 "if=%s" % partition_file,
                 "of=%s" % image,
-                "bs=%s" % DD_BLOCK_SIZE,
-                "seek=%d" % (start_sector * sector_size),
-                "oflag=seek_bytes",
+                "bs=%d" % sector_size,
+                "seek=%d" % start_sector,
                 "conv=notrunc",
                 "status=none",
             ],
