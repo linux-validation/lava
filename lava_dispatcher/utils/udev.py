@@ -487,6 +487,33 @@ def get_udev_devices(job=None, logger=None, device_info=None, required=False):
     return device_paths
 
 
+def usb_device_present(usb_vendor_id, usb_product_ids):
+    """
+    Non-blocking check for a USB device matching the given vendor and one of
+    the given product ids that is connected *right now*. Unlike
+    wait_udev_event(), this does not block waiting for the device to appear - it
+    only inspects the devices that are currently present. Used to detect a board
+    that has re-enumerated into a different USB identity (e.g. EDL crashdump /
+    ramdump mode).
+
+    usb_product_ids may be a single product id or an iterable of them. Returns
+    the matched product id if such a device is present, otherwise None (so the
+    result is also usable as a boolean).
+    """
+    if isinstance(usb_product_ids, str):
+        usb_product_ids = (usb_product_ids,)
+    wanted = {str(pid) for pid in usb_product_ids}
+    context = pyudev.Context()
+    for device in context.list_devices(subsystem="usb"):
+        properties = device.properties
+        if properties.get("ID_VENDOR_ID") != str(usb_vendor_id):
+            continue
+        product_id = properties.get("ID_MODEL_ID")
+        if product_id in wanted:
+            return product_id
+    return None
+
+
 def allow_fs_label(device):
     # boot/deploy methods that indicate that the device in question
     # will require a filesystem label to identify a device.
