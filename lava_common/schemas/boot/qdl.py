@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from voluptuous import Msg, Optional, Required
+from voluptuous import Any, Msg, Optional, Required
 
 from lava_common.schemas import boot, docker
 
@@ -19,5 +19,8 @@ def schema():
         Optional("storage"): str,
         Optional("debug"): bool,
         Optional("docker"): docker(),
+        Optional("ramdump"): bool,
+        Optional("ramdump_segments"): [str],
+        Optional("ramdump_compression"): Any("gz", "xz", "bz2", "zstd"),
     }
     return {**boot.schema(), **base}

@@ -73,6 +73,13 @@
     description: use qdl to flash flat build to the board
     summary: use qdl to flash flat build to the board
     timeout: 300
+  - class: QDLRamdumpAction
+    name: qdl-ramdump
+    level: "2.6"
+    max_retries: 1
+    description: capture a ramdump if the board crashed into EDL crashdump mode
+    summary: capture qdl ramdump on crash
+    timeout: 300
 - class: MinimalBoot
   name: minimal-boot
   level: "3"

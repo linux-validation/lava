@@ -740,6 +740,53 @@ class Action:
             raise self.command_exception(error_msg)
         return ret
 
+    def run_cmd_silent(self, command_list, stdin=None, cwd=None, env=None):
+        """
+        Run a command on the dispatcher WITHOUT logging its output, its errors
+        or any error detail - only whether it succeeded is reported.
+
+        Use this for commands whose output or arguments would otherwise leak
+        sensitive data (credentials, signed URLs, tokens) into the job logs.
+        Pass secrets to the command via ``stdin`` - never on the command line,
+        which is logged here and is also visible in the process list. The
+        command's stdout and stderr are discarded (routed to /dev/null) so they
+        can never reach the logs.
+
+        :param command_list: the command to run (list of arguments, or a string)
+        :param stdin: optional string sent to the command's standard input
+        :param cwd: the working directory for this command
+        :param env: environment variables to pass to the command
+        :return: True if the command exited 0, False otherwise (including when
+            the command could not be started or timed out)
+        """
+        if isinstance(command_list, str):
+            command_list = shlex_split(command_list)
+        elif not isinstance(command_list, list):
+            raise LAVABug("commands to run_cmd_silent need to be a list or a string")
+        command_list = [str(s) for s in command_list]
+        self.logger.debug("Calling (silent): %r", command_list)
+
+        kwargs = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "cwd": cwd,
+            "env": env,
+            "timeout": self.timeout.duration,
+        }
+        if stdin is None:
+            kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            kwargs["input"] = stdin
+            kwargs["text"] = True
+
+        try:
+            proc = subprocess.run(command_list, **kwargs)  # nosec - managed
+        except (OSError, subprocess.SubprocessError):
+            # Deliberately swallow the exception text: it can contain the command
+            # and, for a timeout, would otherwise surface command details.
+            return False
+        return proc.returncode == 0
+
     def run_command(self, command_list, allow_silent=False, allow_fail=False, cwd=None):
         """
         Deprecated - use run_cmd or parsed_command instead.
