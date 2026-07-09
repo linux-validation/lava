@@ -9,7 +9,8 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from lava_common.exceptions import ConfigurationError
+from lava_common.constants import RAMDUMP_TIMEOUT
+from lava_common.exceptions import ConfigurationError, JobError
 from lava_dispatcher.action import Action, Pipeline
 from lava_dispatcher.connections.serial import ConnectDevice
 from lava_dispatcher.logical import RetryAction
@@ -182,17 +183,17 @@ class QDLRamdumpAction(Action):
         connection = super().run(connection, max_end_time)
         # Opportunistic check on the normal path; the authoritative, always-last
         # check happens at teardown in cleanup().
-        self._capture_if_crashed()
+        self._capture_if_crashed(in_cleanup=False)
         return connection
 
     def cleanup(self, connection, max_end_time=None):
         # cleanup() is walked for every action during job teardown, in pipeline
         # order and before the finalize PowerOff. So this runs last and still
         # runs when an earlier action crashed and run() was never reached.
-        self._capture_if_crashed()
+        self._capture_if_crashed(in_cleanup=True)
         super().cleanup(connection, max_end_time)
 
-    def _capture_if_crashed(self):
+    def _capture_if_crashed(self, in_cleanup):
         if self.captured:
             return
         if not self.parameters.get("ramdump"):
@@ -231,10 +232,21 @@ class QDLRamdumpAction(Action):
         if segments:
             command.append(",".join(segments))
 
-        # allow_fail so a ramdump failure can never block job teardown / PowerOff.
-        rc = self.run_cmd(command, allow_fail=True)
+        # Bound the (potentially multi-minute) capture by its own budget.
+        self.timeout.duration = int(
+            self.parameters.get("ramdump_timeout", RAMDUMP_TIMEOUT)
+        )
+        rc = self._run_capture(command, in_cleanup)
         if rc != 0:
             self.logger.error("qdl ramdump failed (rc=%s)", rc)
+            self.logger.results(
+                {
+                    "definition": "lava",
+                    "case": "ramdump",
+                    "level": self.level,
+                    "result": "fail",
+                }
+            )
             return
         self.logger.info("Ramdump captured")
 
@@ -260,6 +272,35 @@ class QDLRamdumpAction(Action):
                 "extra": {"ramdump": object_name},
             }
         )
+
+    def _run_capture(self, command, in_cleanup):
+        """
+        Run the qdl ramdump command, bounded by ``ramdump_timeout``.
+
+        A full DDR dump routinely takes several minutes. During teardown
+        (``in_cleanup``) this action runs under the shared job-cleanup alarm
+        (CLEANUP_TIMEOUT, 300s), which is too short and, if exceeded, would also
+        starve the finalize power-off. So run the capture under its own timeout
+        window and then re-arm the shared guard so the rest of teardown stays
+        bounded. On the opportunistic run()-time path the action's own (ample)
+        run window already applies, so run directly. Returns the qdl exit code,
+        or None if the capture timed out.
+        """
+        try:
+            if not in_cleanup:
+                return self.run_cmd(command, allow_fail=True)
+            try:
+                with self.timeout(None, None):
+                    # allow_fail so a non-zero qdl exit can never block teardown.
+                    return self.run_cmd(command, allow_fail=True)
+            finally:
+                # The window above disarms the shared cleanup alarm on exit.
+                self.job.rearm_cleanup_timeout()
+        except JobError as exc:
+            # Capture exceeded ramdump_timeout; report failure rather than
+            # propagating out of run()/cleanup().
+            self.logger.error("qdl ramdump did not finish: %s", exc)
+            return None
 
     def _publish(self, archive_path, object_name):
         """

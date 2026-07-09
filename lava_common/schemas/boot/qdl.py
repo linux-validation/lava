@@ -21,6 +21,7 @@ def schema():
         Optional("docker"): docker(),
         Optional("ramdump"): bool,
         Optional("ramdump_segments"): [str],
+        Optional("ramdump_timeout"): int,
         Optional("ramdump_compression"): Any("gz", "xz", "bz2", "zstd"),
     }
     return {**boot.schema(), **base}
