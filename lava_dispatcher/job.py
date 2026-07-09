@@ -9,6 +9,7 @@ import datetime
 import errno
 import os
 import shutil
+import signal
 import tempfile
 import time
 import traceback
@@ -244,6 +245,20 @@ class Job:
         self.timeout.name = "job-cleanup"
         with self.timeout(None, time.monotonic() + CLEANUP_TIMEOUT) as max_end_time:
             return self._cleanup(connection, max_end_time)
+
+    def rearm_cleanup_timeout(self) -> None:
+        """
+        Re-arm the shared job-cleanup alarm with a fresh CLEANUP_TIMEOUT budget.
+
+        An action's cleanup() that runs a long operation under its own timeout
+        window (e.g. the qdl ramdump capture) disarms SIGALRM on exit. Calling
+        this afterwards keeps the remaining teardown bounded rather than running
+        unguarded. Only meaningful while inside cleanup().
+        """
+        self.timeout.name = "job-cleanup"
+        self.timeout.start = time.monotonic()
+        signal.signal(signal.SIGALRM, self.timeout._timed_out)
+        signal.alarm(CLEANUP_TIMEOUT)
 
     def _cleanup(self, connection, max_end_time):
         if self.cleaned:
