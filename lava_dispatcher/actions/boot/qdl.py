@@ -16,6 +16,7 @@ from lava_dispatcher.connections.serial import ConnectDevice
 from lava_dispatcher.logical import RetryAction
 from lava_dispatcher.power import ResetDevice
 from lava_dispatcher.utils.compression import compress_file, create_tarfile
+from lava_dispatcher.utils.qdl import OptionalContainerQdlAction
 from lava_dispatcher.utils.shell import which
 from lava_dispatcher.utils.udev import WaitQDLDeviceAction, usb_device_present
 
@@ -64,7 +65,7 @@ class EnterQDL(Action):
             self.run_cmd(cmd)
 
 
-class FlashQDLAction(Action):
+class FlashQDLAction(OptionalContainerQdlAction):
     name = "flash-qdl"
     description = "use qdl to flash flat build to the board"
     summary = "use qdl to flash flat build to the board"
@@ -93,10 +94,14 @@ class FlashQDLAction(Action):
 
         try:
             boot = self.job.device["actions"]["boot"]["methods"]["qdl"]
-            qdl_binary = which(boot["parameters"]["command"])
-            if not qdl_binary:
-                self.logger.error("qdl not installed")
-                raise ConfigurationError("qdl not installed")
+            if self.is_container():
+                # qdl lives inside the container image, not on the dispatcher
+                qdl_binary = boot["parameters"]["command"]
+            else:
+                qdl_binary = which(boot["parameters"]["command"])
+                if not qdl_binary:
+                    self.logger.error("qdl not installed")
+                    raise ConfigurationError("qdl not installed")
             # all paths are relative to the tarball
             qdl_flashing_prog_path = self.parameters["firehose_program"]
             qdl_rawprogram_path = self.parameters["rawprogram"]
@@ -107,7 +112,7 @@ class FlashQDLAction(Action):
             self.base_command = [qdl_binary]
             # execute qdl to detect version
             version_command = [qdl_binary, "--version"]
-            qdl_output = self.parsed_command(version_command)
+            qdl_output = self.parsed_qdl_command(version_command)
             # qdl version v2.7
             match = re.search(
                 r"qdl\ version\ v(?P<version_major>\d+).(?P<version_minor>\d+)",
@@ -160,10 +165,9 @@ class FlashQDLAction(Action):
         )
 
         # at this stage it's assumed that qcomflash tarball is decompressed
-        for _, qdl_command in enumerate(self.exec_list):
-            qdl_cmd = " ".join(qdl_command)
+        for qdl_command in self.exec_list:
             flash_dir = os.path.join(qcomflash_dir.as_posix(), self.qcomflash_path)
-            self.run_cmd(qdl_cmd.split(" "), cwd=flash_dir)
+            self.run_qdl(qdl_command, flash_dir)
 
         return connection
 
