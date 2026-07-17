@@ -488,7 +488,14 @@ def _device_timeouts_schema():
 
 
 def _device_user_commands():
-    return Schema({All(str): {Required("do"): str, Optional("undo"): str}})
+    return Schema(
+        {
+            All(str): {
+                Required("do"): Any(str, [str]),
+                Optional("undo"): Any(str, [str]),
+            }
+        }
+    )
 
 
 def _device_connections_commands():

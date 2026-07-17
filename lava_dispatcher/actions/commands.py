@@ -84,15 +84,21 @@ class CommandAction(Action):
             return
         try:
             self.cmd = user_commands[cmd_name]
-            if not isinstance(self.cmd["do"], str) or not isinstance(
-                self.cmd.get("undo", ""), str
+            if not self.is_command(self.cmd["do"]) or not self.is_command(
+                self.cmd.get("undo", "")
             ):
                 raise ConfigurationError(
                     'User command "%s" is invalid: '
-                    "'do' and 'undo' should be strings" % cmd_name
+                    "'do' and 'undo' should be strings or lists of strings" % cmd_name
                 )
         except KeyError:
             self.errors = "Unknown user command '%s'" % cmd_name
+
+    @staticmethod
+    def is_command(cmd) -> bool:
+        if isinstance(cmd, str):
+            return True
+        return isinstance(cmd, list) and all(isinstance(c, str) for c in cmd)
 
     def run(self, connection, max_end_time):
         connection = super().run(connection, max_end_time)
@@ -131,4 +137,8 @@ class CommandAction(Action):
             self.logger.info(
                 "Running cleanup for user command '%s'", self.parameters["name"]
             )
-            self.run_cmd(self.cmd["undo"])
+            cmd = self.cmd["undo"]
+            if not isinstance(cmd, list):
+                cmd = [cmd]
+            for c in cmd:
+                self.run_cmd(c)
