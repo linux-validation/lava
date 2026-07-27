@@ -1225,7 +1225,10 @@ class ApplyQDLOverlay(Action):
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         # ToDo: take compression from download action?
+        self.logger.info(f"decompressing {qcomflash}")
         out_path = decompress_file(qcomflash, "gz")
+
+        self.logger.info(f"extracting {out_path} to {qdl_dir}")
         untar_file(out_path, qdl_dir)
 
         if not os.path.isfile(f"{qdl_dir}/{self.rootfs_image}"):

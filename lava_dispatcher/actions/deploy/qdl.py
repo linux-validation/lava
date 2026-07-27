@@ -101,7 +101,10 @@ class QDLAction(Action):
         dest = Path(qdl_dir)
         dest.parent.mkdir(parents=True, exist_ok=True)
 
+        self.logger.info("Decompressing %s", qcomflash)
         out_path = decompress_file(qcomflash, "gz")
+
+        self.logger.info("Extracting %s to %s", out_path, qdl_dir)
         untar_file(out_path, qdl_dir)
 
         return connection
