@@ -19,6 +19,7 @@ from lava_common.exceptions import (
     TestError,
 )
 from lava_dispatcher.action import Action, Pipeline
+from lava_dispatcher.actions.commands import CommandAction
 from lava_dispatcher.actions.test.mixins import ReportMixin
 from lava_dispatcher.connection import SignalMatch
 from lava_dispatcher.logical import RetryAction
@@ -136,6 +137,7 @@ class TestShellAction(ReportMixin, Action):
         # noinspection PyTypeChecker
         self.pattern = PatternFixup(testdef=None, count=0)
         self.current_run = None
+        self.device_commands = False
 
     def _reset_patterns(self):
         # Extend the list of patterns when creating subclasses.
@@ -157,6 +159,7 @@ class TestShellAction(ReportMixin, Action):
             if "repository" not in testdef:
                 self.errors_add("Repository missing from test definition")
         self._reset_patterns()
+        self.device_commands = bool(self.parameters.get("device_commands", False))
         super().validate()
 
     def run(self, connection, max_end_time):
@@ -552,6 +555,35 @@ class TestShellAction(ReportMixin, Action):
             name = "testset_" + action.lower()
         return name
 
+    def signal_device_command(self, test_connection, params):
+        name = params[0] if params else ""
+        if self.device_commands:
+            ret = self.run_device_command(name)
+        else:
+            self.logger.error("Device commands are not enabled for this test action")
+            ret = 1
+        test_connection.sendline(
+            "<LAVA_DEVICECMD_ACK %s %d>" % (name, ret), delay=self.character_delay
+        )
+
+    def run_device_command(self, name) -> int:
+        commands = self.job.device.get("commands", {})
+        if name in CommandAction.builtin_commands and name in commands:
+            command = commands[name]
+        else:
+            command = commands.get("users", {}).get(name, {}).get("do")
+        if not command:
+            self.logger.error("Device command %r is not defined for this device", name)
+            return 1
+        if not isinstance(command, list):
+            command = [command]
+        self.logger.info("Running device command %r", name)
+        for cmd in command:
+            ret = self.run_cmd(cmd, allow_fail=True)
+            if ret != 0:
+                return 1 if ret is None else ret
+        return 0
+
     @nottest
     def pattern_test_case(self, test_connection):
         match = test_connection.match
@@ -652,6 +684,8 @@ class TestShellAction(ReportMixin, Action):
                 raise TestError(" ".join(params))
             elif name == "TESTEVENT":
                 self.logger.event(" ".join(params))
+            elif name == "DEVICECMD":
+                self.signal_device_command(test_connection, params)
 
             self.signal_director.signal(name, params)
             ret_val = True

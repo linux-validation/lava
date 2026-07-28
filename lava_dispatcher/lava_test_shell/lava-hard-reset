@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# Runs the device hard_reset command on the worker. See ``lava-device-command``.
+#
+# Usage: ``lava-hard-reset``
+
+exec "$LAVA_TEST_BIN"/lava-device-command hard_reset
