@@ -69,6 +69,7 @@ actions:
         minutes: 10
       docker:
         image: adb-fastboot
+      device_commands: true
       definitions:
         - repository:
             metadata:

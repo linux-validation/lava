@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# Runs the device power_off command on the worker. See ``lava-device-command``.
+#
+# Usage: ``lava-power-off``
+
+exec "$LAVA_TEST_BIN"/lava-device-command power_off

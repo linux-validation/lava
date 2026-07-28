@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Asks the dispatcher to run a device command on the worker and waits for it to
+# complete. The command may be a builtin (power_on, power_off, hard_reset,
+# pre_power_command, pre_os_command, ...) or one of the device's user commands.
+# It must be listed in the test action's "device_commands".
+#
+# The exchange uses the test shell's own stdin and stdout, so this only works
+# from the foreground of the test shell.
+#
+# Exits with the command's return code.
+#
+# Usage: ``lava-device-command <name>``
+
+if [ $# -ne 1 ]; then
+	echo "Usage: lava-device-command <name>" >&2
+	exit 1
+fi
+
+NAME="$1"
+
+echo "<LAVA_SIGNAL_DEVICECMD ${NAME}>"
+
+while read -r line; do
+	line=$(printf '%s' "$line" | tr -d '\r')
+	case "$line" in
+	"<LAVA_DEVICECMD_ACK ${NAME} "*)
+		line="${line#<LAVA_DEVICECMD_ACK ${NAME} }"
+		exit "${line%>}"
+		;;
+	esac
+done
+
+echo "lava-device-command: connection closed waiting for '${NAME}'" >&2
+exit 1
