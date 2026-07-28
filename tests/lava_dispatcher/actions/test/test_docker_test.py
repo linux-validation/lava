@@ -292,3 +292,76 @@ def test_docker_test_shell_run_prefix(job_prefix, mocker):
         action.timeout,
         logger=action.logger,
     )
+
+
+@pytest.fixture
+def test_shell(job):
+    return job.pipeline.find_action(DockerTestShell)
+
+
+def test_device_commands_disabled_by_default(test_shell):
+    test_shell.validate()
+    assert test_shell.device_commands is False
+
+
+def test_device_commands_enabled(test_shell):
+    test_shell.parameters["device_commands"] = True
+    test_shell.validate()
+    assert test_shell.device_commands is True
+
+
+def test_device_commands_undefined(test_shell, mocker):
+    test_shell.parameters["device_commands"] = True
+    test_shell.validate()
+    run_cmd = mocker.patch.object(test_shell, "run_cmd")
+    connection = MagicMock()
+
+    test_shell.signal_device_command(connection, ["recovery_mode"])
+
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_DEVICECMD_ACK recovery_mode 1>", delay=mocker.ANY
+    )
+
+
+def test_signal_device_command(test_shell, mocker):
+    test_shell.parameters["device_commands"] = True
+    test_shell.validate()
+    run_cmd = mocker.patch.object(test_shell, "run_cmd", return_value=0)
+    connection = MagicMock()
+
+    test_shell.signal_device_command(connection, ["hard_reset"])
+
+    assert run_cmd.mock_calls == [
+        mocker.call("/path/to/reset.sh 0 1 2", allow_fail=True),
+        mocker.call("sleep 5", allow_fail=True),
+    ]
+    connection.sendline.assert_called_once_with(
+        "<LAVA_DEVICECMD_ACK hard_reset 0>", delay=mocker.ANY
+    )
+
+
+def test_signal_device_command_not_enabled(test_shell, mocker):
+    test_shell.validate()
+    run_cmd = mocker.patch.object(test_shell, "run_cmd")
+    connection = MagicMock()
+
+    test_shell.signal_device_command(connection, ["power_off"])
+
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_DEVICECMD_ACK power_off 1>", delay=mocker.ANY
+    )
+
+
+def test_signal_device_command_failed(test_shell, mocker):
+    test_shell.parameters["device_commands"] = True
+    test_shell.validate()
+    mocker.patch.object(test_shell, "run_cmd", return_value=3)
+    connection = MagicMock()
+
+    test_shell.signal_device_command(connection, ["power_on"])
+
+    connection.sendline.assert_called_once_with(
+        "<LAVA_DEVICECMD_ACK power_on 3>", delay=mocker.ANY
+    )

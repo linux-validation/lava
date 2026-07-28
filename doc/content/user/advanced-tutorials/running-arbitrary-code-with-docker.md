@@ -170,6 +170,57 @@ specified image, and the following applies:
   ```bash
   sh -c "${LAVA_HARD_RESET_COMMAND}"
   ```
+
+#### Running device commands on the worker
+
+Exporting the power control commands as environment variables only works when
+the commands can run unchanged inside the container: the tools they invoke must
+be installed in the image, and any addresses they use must be reachable from the
+container's network. That is frequently not the case - power control is often
+done with a host binary talking to a local USB relay.
+
+Instead, the test can ask the dispatcher to run the command on the worker, where
+those tools and that network already are. Opt in with `device_commands`:
+
+```yaml
+# ...
+    - test:
+        docker:
+            image: adb-fastboot
+        device_commands: true
+# ...
+```
+
+The test then calls `lava-device-command`, or one of the `lava-power-on`,
+`lava-power-off` and `lava-hard-reset` shortcuts:
+
+```yaml
+            run:
+                steps:
+                    - lava-hard-reset
+                    - lava-device-command usb_c_off
+```
+
+The commands that can be asked for are the builtin ones (`power_on`,
+`power_off`, `hard_reset`, `pre_power_command`, `pre_os_command`, ...) and the
+device's user commands. Asking for one the device does not define fails the call
+rather than the job, so the same job definition works across devices that do not
+all provide the same commands.
+
+The call blocks until the command has finished on the worker and exits with its
+return code.
+
+Commands are exchanged with the dispatcher over the test shell's own stdin and
+stdout, so only its foreground process can ask for one. A test that wants device
+commands from somewhere else - a background process, or a session that arrived
+over the network - has to relay them through something running in that
+foreground.
+
+Note that power cycling a device makes it re-enumerate over USB. Its device
+nodes are shared with the container again when that happens, but only once udev
+has seen the device come back, so a test that power cycles the device has to
+wait for the nodes it needs to reappear before using them.
+
 #### Using password protected docker images
 
 To pull images from a password protected registry add a login section
