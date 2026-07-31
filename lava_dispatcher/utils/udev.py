@@ -441,8 +441,11 @@ def get_udev_devices(job=None, logger=None, device_info=None, required=False):
                     for link in udev_device.device_links:
                         device_paths.add(link)
             elif board_id and not usb_vendor_id and not usb_product_id:
-                # try with board id alone
-                if udev_device_properties.get("ID_SERIAL_SHORT") == board_id:
+                # try with board id alone or inside something crazy like ID_MODEL
+                if board_id in (
+                    udev_device_properties.get("ID_SERIAL_SHORT"),
+                    get_device_product(udev_device),
+                ):
                     device_paths.add(udev_device.device_node)
                     added.add(board_id)
                     for child in udev_device.children:
