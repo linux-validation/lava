@@ -378,6 +378,9 @@ def docker(image_key="image"):
         Optional("login"): {
             Required("registry"): str,
             Required("user"): str,
-            Required("password"): str,
+            # Name of a remote artifact token from the submitter profile. The
+            # server replaces it with the token value when the dispatcher
+            # fetches the job definition.
+            Required("token"): str,
         },
     }

@@ -10,6 +10,7 @@ from unittest.mock import ANY, call, patch
 
 import pytest
 
+from lava_common.exceptions import JobError
 from lava_dispatcher.action import Action
 from lava_dispatcher.utils.docker import DockerLogin, DockerRun
 
@@ -335,7 +336,9 @@ class TestDockerLogin(LavaDispatcherTestCase):
                 "login": {
                     "registry": "example.com",
                     "user": "lavauser",
-                    "password": "lava_password",
+                    # Replaced by the server with the remote artifact token
+                    # value before the job definition reaches the dispatcher.
+                    "token": "lava_token_value",
                 },
             },
             job,
@@ -343,7 +346,7 @@ class TestDockerLogin(LavaDispatcherTestCase):
         self.assertIsNotNone(docker_run._docker_login)
         self.assertEqual(docker_run._docker_login.registry, "example.com")
         self.assertEqual(docker_run._docker_login.user, "lavauser")
-        self.assertEqual(docker_run._docker_login.password, "lava_password")
+        self.assertEqual(docker_run._docker_login.token, "lava_token_value")
 
         action = Action(job)
 
@@ -356,3 +359,33 @@ class TestDockerLogin(LavaDispatcherTestCase):
             docker_home = docker_run._docker_login.login(action)
 
         self.assertEqual(docker_home, "/foo/bar")
+        self.assertIn("lava_token_value", action.logger.secrets_mask)
+
+    def test_from_parameters_plain_password_rejected(self) -> None:
+        job = self.create_simple_job()
+        with self.assertRaises(JobError):
+            DockerRun.from_parameters(
+                {
+                    "image": "example.com/debian:13",
+                    "login": {
+                        "registry": "example.com",
+                        "user": "lavauser",
+                        "password": "lava_password",
+                    },
+                },
+                job,
+            )
+
+    def test_from_parameters_missing_token(self) -> None:
+        job = self.create_simple_job()
+        with self.assertRaises(JobError):
+            DockerRun.from_parameters(
+                {
+                    "image": "example.com/debian:13",
+                    "login": {
+                        "registry": "example.com",
+                        "user": "lavauser",
+                    },
+                },
+                job,
+            )

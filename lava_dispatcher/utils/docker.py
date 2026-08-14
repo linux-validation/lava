@@ -22,10 +22,18 @@ if TYPE_CHECKING:
 
 
 class DockerLogin:
-    def __init__(self, registry: str, user: str, password: str):
+    """
+    Log in to a remote registry.
+
+    The secret is never part of the job definition: the test job refers to a
+    remote artifact token by name and the server substitutes the token value
+    when the dispatcher downloads the job definition.
+    """
+
+    def __init__(self, registry: str, user: str, token: str):
         self.registry = registry
         self.user = user
-        self.password = password
+        self.token = token
 
     def _build_docker_login_command(self) -> list[str]:
         return [
@@ -39,11 +47,13 @@ class DockerLogin:
 
     def login(self, action: Action) -> str:
         docker_home = action.mkdtemp()
+        # Never let the token value show up in the job logs.
+        action.logger.secrets_mask.add(self.token)
         action.logger.debug(f"Login in to remote registry {self.registry!r}")
         action.parsed_command(
             self._build_docker_login_command(),
             env={**os.environ, "HOME": docker_home},
-            input=self.password,
+            input=self.token,
         )
         action.logger.debug("Login successful")
         return docker_home
@@ -81,19 +91,23 @@ class DockerRun:
         for device in params.get("devices", []):
             run.add_device(device)
         if login_data := params.get("login"):
+            if "password" in login_data:
+                raise JobError(
+                    "Docker login with a plain text 'password' is not supported. "
+                    "Use 'token' with the name of a remote artifact token "
+                    "defined in your user profile."
+                )
             try:
                 user = login_data["user"]
-                password = login_data["password"]
+                token = login_data["token"]
                 registry = login_data["registry"]
             except KeyError:
                 raise JobError(
                     "Incorrect docker login dictionary. "
-                    "Expected 'registry', 'user' and 'password' entries."
+                    "Expected 'registry', 'user' and 'token' entries."
                 )
 
-            run._docker_login = DockerLogin(
-                registry=registry, user=user, password=password
-            )
+            run._docker_login = DockerLogin(registry=registry, user=user, token=token)
         return run
 
     def local(self, local):
