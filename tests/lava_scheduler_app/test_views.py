@@ -93,6 +93,39 @@ actions:
       url: http://test.org/test.img
 """
 
+DOCKER_LOGIN_JOB_DEFINITION = r"""
+device_type: juno
+actions:
+- deploy:
+    timeout:
+      minutes: 35
+    to: downloads
+    images:
+      rootfs:
+        url: http://test.org/test.img
+    docker:
+      image: registry.example.com/lava/test
+      login:
+        registry: registry.example.com
+        user: lavauser
+        token: docker-token
+- boot:
+    method: uuu
+    docker:
+      image: registry.example.com/lava/uuu
+      login:
+        registry: registry.example.com
+        user: lavauser
+        token: docker-token
+- test:
+    docker:
+      image: registry.example.com/lava/test
+      login:
+        registry: registry.example.com
+        user: lavauser
+        token: unknown-token
+"""
+
 INT_VALUE_JOB_DEFINITION = r"""
 device_type: juno
 actions:
@@ -1490,6 +1523,48 @@ def test_internal_v1_jobs_test_auth_token(client, setup, mocker):
 
 
 @pytest.mark.django_db
+def test_internal_v1_jobs_docker_login_token(client, setup, mocker):
+    user = User.objects.get(username="tester")
+    job01 = TestJob.objects.get(description="test job 01")
+    job01.definition = DOCKER_LOGIN_JOB_DEFINITION
+    job01.save()
+
+    mocker.patch("pathlib.Path.write_text", mocker.Mock())
+
+    def get_logins():
+        ret = client.get(
+            reverse("lava.scheduler.internal.v1.jobs", args=[job01.id]),
+            HTTP_LAVA_TOKEN=job01.token,
+        )
+        assert ret.status_code == 200
+        job_def = yaml_safe_load(ret.json()["definition"])
+        return [
+            action[key]["docker"]["login"]
+            for action in job_def["actions"]
+            for key in action
+        ]
+
+    # Token not in db.
+    assert [login["token"] for login in get_logins()] == [
+        "docker-token",
+        "docker-token",
+        "unknown-token",
+    ]
+
+    # Token in db: replaced in every action type, unknown names left alone.
+    RemoteArtifactsAuth.objects.create(
+        name="docker-token", token="dockertokenvalue", user=user
+    )
+    logins = get_logins()
+    assert [login["token"] for login in logins] == [
+        "dockertokenvalue",
+        "dockertokenvalue",
+        "unknown-token",
+    ]
+    assert all(login["user"] == "lavauser" for login in logins)
+
+
+@pytest.mark.django_db
 def test_internal_v1_jobs_logs(client, setup, mocker):
     LOGS = """- {"dt": "2023-06-01T05:24:00.060423", "lvl": "info", "msg": "lava-dispatcher, installed at version: 2023.02"}
 - {"dt": "2023-06-01T05:24:00.060872", "lvl": "info", "msg": "start: 0 validate"}
@@ -1745,3 +1820,49 @@ secrets:
         updater = InPlaceTokenUpdater(tokens)
         updater.update_secrets(secrets["secrets"])
         assert secrets == expected_secrets
+
+    @pytest.fixture
+    def docker_login_actions(self):
+        return yaml_safe_load(
+            """
+- boot:
+    method: uuu
+    docker:
+        image: registry.example.com/lava/uuu
+        login:
+            registry: registry.example.com
+            user: lavauser
+            token: token_name
+- test:
+    docker:
+        image: registry.example.com/lava/test
+        login:
+            registry: registry.example.com
+            user: lavauser
+            token: unknown_name
+- test:
+    docker:
+        image: registry.example.com/lava/test
+        login:
+            registry: registry.example.com
+            user: lavauser
+            token: [not, a, string]
+            """
+        )
+
+    def test_update_docker_logins(self, tokens, docker_login_actions):
+        updater = InPlaceTokenUpdater(tokens)
+        updater.update_docker_logins(docker_login_actions)
+
+        logins = [
+            action[key]["docker"]["login"]
+            for action in docker_login_actions
+            for key in action
+        ]
+        # Known name replaced, anything else left alone.
+        assert [login["token"] for login in logins] == [
+            "token_value",
+            "unknown_name",
+            ["not", "a", "string"],
+        ]
+        assert all(login["user"] == "lavauser" for login in logins)

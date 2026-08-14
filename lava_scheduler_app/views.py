@@ -1174,6 +1174,19 @@ class InPlaceTokenUpdater:
             for val in data.values():
                 self.update_headers(val)
 
+    def update_docker_logins(self, data: list[Any] | dict[str, Any]) -> None:
+        if isinstance(data, list):
+            for item in data:
+                self.update_docker_logins(item)
+        elif isinstance(data, dict):
+            login = data.get("login")
+            if isinstance(login, dict) and "registry" in login:
+                token_name = login.get("token")
+                if isinstance(token_name, str) and token_name in self.tokens:
+                    login["token"] = self.tokens[token_name]
+            for val in data.values():
+                self.update_docker_logins(val)
+
     def update_secrets(self, secrets: dict[str, str]) -> None:
         for k, v in secrets.items():
             if v in self.tokens.keys():
@@ -1208,6 +1221,8 @@ def internal_v1_jobs(request, pk):
                 for action in actions:
                     if "deploy" in action or "test" in action:
                         updater.update_headers(action)
+                # A docker login block can show up in any action type.
+                updater.update_docker_logins(actions)
 
             if secrets := job_def.get("secrets"):
                 updater.update_secrets(secrets)

@@ -223,20 +223,31 @@ wait for the nodes it needs to reappear before using them.
 
 #### Using password protected docker images
 
-To pull images from a password protected registry add a login section
-with the registry domain name, username and password.
+To pull images from a password protected registry add a login section with the
+registry domain name, username and the **name** of a remote artifact token.
+
+The registry password (or access token) is never written in the job definition.
+Store it once on the LAVA server instead: click on your name in the top right
+corner, then `Profile`, and use the `Remote artifact tokens` `Create` button to
+save it with a token name of your choice. When the job runs, LAVA replaces the
+token name with the token value of the job submitter, so the job definition
+stays safe to share.
 
 ```yaml
 # ...
     - test:
         docker:
             image: example.com/my-adb-image
-                login:
-                    registry: example.com
-                    user: foobar
-                    password: my_password
+            login:
+                registry: example.com
+                user: foobar
+                token: my-registry-token
 # ...
 ```
+
+The token value is passed to `docker login` on standard input and is masked in
+the job logs. `docker login` and `docker pull` run with a per-job `HOME`, so the
+credentials are removed when the job finishes.
 
 **Warning**: The pulled image will be cached on the local daemon and will
 be available to other jobs running on same worker.
