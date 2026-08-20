@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib.admin.models import LogEntry
 from django.contrib.humanize.templatetags.humanize import naturaltime
 from django.db.models.functions import Lower
+from django.template.defaultfilters import filesizeformat, floatformat
 from django.utils.html import format_html, strip_tags
 from django.utils.safestring import mark_safe
 from django.utils.timesince import timesince
@@ -381,10 +382,76 @@ class WorkerTable(LavaTable):
     def render_last_ping(self, record):
         return timesince(record.last_ping)
 
+    def render_disk(self, record):
+        percentage = record.tmp_disk_used_percentage
+        if percentage is None:
+            return "\u2014"
+        if percentage >= 90:
+            level = "danger"
+        elif percentage >= 75:
+            level = "warning"
+        else:
+            level = "success"
+        return format_html(
+            '<span class="label label-{}" title="{} free of {}">{}% used</span>',
+            level,
+            filesizeformat(record.tmp_disk_free),
+            filesizeformat(record.tmp_disk_total),
+            floatformat(percentage, 0),
+        )
+
+    def render_load(self, record):
+        percentage = record.load_percentage
+        if percentage is None:
+            return "\u2014"
+        if percentage >= 100:
+            level = "danger"
+        elif percentage >= 75:
+            level = "warning"
+        else:
+            level = "success"
+        return format_html(
+            '<span class="label label-{}" title="{} on {} cores">{}</span>',
+            level,
+            floatformat(record.load_1, 2),
+            record.nproc,
+            floatformat(record.load_1, 2),
+        )
+
+    # Reported by the worker with each ping; shown as one readable column
+    # each rather than as the raw fields django-tables2 would generate.
+    disk = tables.Column(
+        accessor="tmp_disk_used_percentage",
+        verbose_name="Job storage",
+        order_by="tmp_disk_free",
+        empty_values=(),
+    )
+    load = tables.Column(
+        accessor="load_percentage",
+        verbose_name="Load",
+        order_by="load_1",
+        empty_values=(),
+    )
+
     class Meta(LavaTable.Meta):
         model = Worker
-        sequence = ["hostname", "state", "health", "description"]
-        exclude = ["token"]
+        sequence = ["hostname", "state", "health", "description", "disk", "load"]
+        exclude = [
+            "token",
+            "kernel",
+            "arch",
+            "boot_time",
+            "cpu_model",
+            "nproc",
+            "load_1",
+            "load_5",
+            "load_15",
+            "tmp_dir",
+            "tmp_disk_total",
+            "tmp_disk_free",
+            "mem_total",
+            "mem_available",
+        ]
         searches = {"hostname": "contains"}
         queries = {
             "worker_state_query": "state",

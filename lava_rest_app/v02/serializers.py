@@ -264,7 +264,24 @@ class WorkerSerializer(PartialUpdateSerializerMixin, serializers.ModelSerializer
     class Meta:
         model = Worker
         fields = "__all__"
-        read_only_fields = ("last_ping", "state")
+        # the capacity fields are reported by the worker itself, never set here
+        read_only_fields = (
+            "last_ping",
+            "state",
+            "kernel",
+            "arch",
+            "boot_time",
+            "cpu_model",
+            "nproc",
+            "load_1",
+            "load_5",
+            "load_15",
+            "tmp_dir",
+            "tmp_disk_total",
+            "tmp_disk_free",
+            "mem_total",
+            "mem_available",
+        )
 
 
 class AliasSerializer(serializers.ModelSerializer):

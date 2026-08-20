@@ -14,6 +14,7 @@ import json
 import logging
 import logging.handlers
 import os
+import platform
 import sqlite3
 import subprocess
 import sys
@@ -22,10 +23,10 @@ import traceback
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from functools import partial
+from functools import cache, partial
 from json import loads as json_loads
 from pathlib import Path
-from shutil import rmtree
+from shutil import disk_usage, rmtree
 from signal import Signals
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,7 @@ from lava_common.constants import WORKER_DIR as _WORKER_DIR_STR
 from lava_common.exceptions import LAVABug
 from lava_common.version import __version__
 from lava_common.worker import get_parser, init_sentry_sdk
+from lava_dispatcher.utils.filesystem import dispatcher_download_dir
 from lava_common.yaml import yaml_safe_load
 
 if TYPE_CHECKING:
@@ -64,6 +66,10 @@ FORMAT = "%(asctime)-15s %(levelname)7s %(message)s"
 ping_interval = 20
 debug = False
 tmp_dir = WORKER_DIR / "tmp"
+# Where lava-run puts job files. The server decides this, in the dispatcher
+# configuration it sends with each job, so the worker only learns it once it
+# has been given something to run; until then this is the default.
+download_dir = DISPATCHER_DOWNLOAD_DIR
 
 # Stale configuration
 STALE_CONFIG = {
@@ -173,6 +179,10 @@ def start_job(
     """
     # Create the base directory
     dispatcher_cfg = yaml_safe_load(dispatcher)
+    # Remember where this server wants job files kept, so that the capacity a
+    # ping reports describes the filesystem the jobs actually land on.
+    global download_dir
+    download_dir = dispatcher_download_dir(dispatcher_cfg)
     base_dir = tmp_dir / f"{get_prefix(dispatcher_cfg)}{job_id}"
     base_dir.mkdir(mode=0o755, exist_ok=True, parents=True)
 
@@ -572,12 +582,109 @@ class VersionMismatch(Exception):
     pass
 
 
+def read_cpu_model() -> str | None:
+    """
+    The CPU this worker runs on, from /proc/cpuinfo.
+
+    The key differs by architecture: x86 has "model name", arm64 usually has
+    no per-CPU name at all and only a board-level "Model" or "Hardware". Take
+    whichever turns up first and let the caller fall back.
+    """
+    with contextlib.suppress(OSError):
+        with open("/proc/cpuinfo") as cpuinfo:
+            for line in cpuinfo:
+                key, _, value = line.partition(":")
+                if key.strip() in ("model name", "Model", "Hardware"):
+                    if value := value.strip():
+                        return value
+    return None
+
+
+def read_meminfo() -> tuple[int, int] | None:
+    """
+    Total and available memory in bytes, from /proc/meminfo.
+
+    "Available" rather than "free" on purpose: free excludes the page cache,
+    most of which the kernel would hand back on demand, so it makes a busy
+    worker look far worse off than it is.
+    """
+    wanted = {"MemTotal": 0, "MemAvailable": 0}
+    with contextlib.suppress(OSError):
+        with open("/proc/meminfo") as meminfo:
+            for line in meminfo:
+                key, _, value = line.partition(":")
+                if key in wanted:
+                    # "MemTotal:       16311248 kB"
+                    with contextlib.suppress(IndexError, ValueError):
+                        wanted[key] = int(value.split()[0]) * 1024
+    if not wanted["MemTotal"]:
+        return None
+    return wanted["MemTotal"], wanted["MemAvailable"]
+
+
+@cache
+def static_worker_stats() -> dict[str, str]:
+    """
+    The facts about a worker that cannot change while it is running, read once
+    rather than on every ping. /proc/cpuinfo in particular is tens of kilobytes
+    on a machine with many cores, and none of this survives a reboot anyway.
+    """
+    uname = platform.uname()
+    return {
+        "kernel": uname.release[:64],
+        "arch": uname.machine[:32],
+        "cpu_model": (read_cpu_model() or uname.machine)[:128],
+    }
+
+
+def worker_stats() -> dict[str, str]:
+    """
+    How much capacity this worker has, to send along with a ping.
+
+    Every figure is optional and reported independently: a worker that cannot
+    read one still reports the others, and the server keeps whatever it is not
+    told. The disk figures describe the filesystem holding the job temporary
+    directory, which is the one that fills up with downloaded images.
+    """
+    stats: dict[str, str] = dict(static_worker_stats())
+
+    # /proc/uptime is the host's even in a container, which is what we want:
+    # a reboot there takes the worker with it.
+    with contextlib.suppress(OSError, IndexError, ValueError):
+        with open("/proc/uptime") as uptime:
+            stats["uptime"] = str(int(float(uptime.read().split()[0])))
+
+    # not os.cpu_count(), which ignores the affinity mask the worker runs under
+    with contextlib.suppress(OSError):
+        stats["nproc"] = str(len(os.sched_getaffinity(0)))
+
+    with contextlib.suppress(OSError):
+        load_1, load_5, load_15 = os.getloadavg()
+        stats["load_1"] = f"{load_1:.2f}"
+        stats["load_5"] = f"{load_5:.2f}"
+        stats["load_15"] = f"{load_15:.2f}"
+
+    if meminfo := read_meminfo():
+        stats["mem_total"], stats["mem_available"] = (str(v) for v in meminfo)
+
+    with contextlib.suppress(OSError):
+        usage = disk_usage(download_dir)
+        stats["tmp_dir"] = download_dir
+        stats["tmp_disk_total"] = str(usage.total)
+        stats["tmp_disk_free"] = str(usage.free)
+
+    return stats
+
+
 async def ping(
     session: aiohttp.ClientSession, url: str, token: str, name: str
 ) -> dict[str, list]:
     LOG.debug("PING => server")
     ret = await aiohttp_get(
-        session, f"{url}{URL_WORKERS}{name}/", token, params={"version": __version__}
+        session,
+        f"{url}{URL_WORKERS}{name}/",
+        token,
+        params={"version": __version__, **worker_stats()},
     )
     if ret.status_code != 200:
         LOG.error("-> server error: code %d", ret.status_code)
