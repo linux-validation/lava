@@ -97,6 +97,120 @@
   </div>
 </div>
 
+{% if worker.tmp_disk_total or worker.nproc or worker.mem_total or worker.kernel %}
+<div class="row">
+  <div class="col-md-6">
+    <h4 class="modal-header">Job storage</h4>
+    {% if worker.tmp_disk_total %}
+    <dl class="dl-horizontal">
+      <dt>Directory</dt>
+      <dd><code>{{ worker.tmp_dir|default:"<i>...</i>" }}</code></dd>
+      <dt>Free</dt>
+      <dd>{{ worker.tmp_disk_free|filesizeformat }} of {{ worker.tmp_disk_total|filesizeformat }}</dd>
+      <dt>Used</dt>
+      <dd>
+        <div class="progress" style="margin-bottom: 5px;" title="{{ worker.tmp_disk_used|filesizeformat }} used">
+          {% if worker.tmp_disk_used_percentage >= 90 %}
+          <div class="progress-bar progress-bar-danger"
+          {% elif worker.tmp_disk_used_percentage >= 75 %}
+          <div class="progress-bar progress-bar-warning"
+          {% else %}
+          <div class="progress-bar progress-bar-success"
+          {% endif %}
+               role="progressbar" style="width: {{ worker.tmp_disk_used_percentage|floatformat:0 }}%;">
+            {{ worker.tmp_disk_used_percentage|floatformat:0 }}%
+          </div>
+        </div>
+      </dd>
+    </dl>
+    {% else %}
+    <p class="text-muted"><i>Not reported by this worker.</i></p>
+    {% endif %}
+  </div>
+  <div class="col-md-6">
+    <h4 class="modal-header">Memory</h4>
+    {% if worker.mem_total %}
+    <dl class="dl-horizontal">
+      <dt>Available</dt>
+      <dd>{{ worker.mem_available|filesizeformat }} of {{ worker.mem_total|filesizeformat }}</dd>
+      <dt>Used</dt>
+      <dd>
+        <div class="progress" style="margin-bottom: 5px;" title="{{ worker.mem_used|filesizeformat }} in use">
+          {% if worker.mem_used_percentage >= 90 %}
+          <div class="progress-bar progress-bar-danger"
+          {% elif worker.mem_used_percentage >= 75 %}
+          <div class="progress-bar progress-bar-warning"
+          {% else %}
+          <div class="progress-bar progress-bar-success"
+          {% endif %}
+               role="progressbar" style="width: {{ worker.mem_used_percentage|floatformat:0 }}%;">
+            {{ worker.mem_used_percentage|floatformat:0 }}%
+          </div>
+        </div>
+      </dd>
+    </dl>
+    {% else %}
+    <p class="text-muted"><i>Not reported by this worker.</i></p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <h4 class="modal-header">Load</h4>
+    {% if worker.nproc %}
+    <dl class="dl-horizontal">
+      <dt>CPU</dt>
+      <dd>{{ worker.cpu_model|default:"<i>...</i>" }}</dd>
+      <dt>Cores</dt>
+      <dd>{{ worker.nproc }}</dd>
+      <dt>Average</dt>
+      <dd>{{ worker.load_1|floatformat:2 }} <small class="text-muted">(1m)</small>
+        &nbsp;{{ worker.load_5|floatformat:2 }} <small class="text-muted">(5m)</small>
+        &nbsp;{{ worker.load_15|floatformat:2 }} <small class="text-muted">(15m)</small></dd>
+      <dt>Per core</dt>
+      <dd>
+        <div class="progress" style="margin-bottom: 5px;" title="{{ worker.load_1|floatformat:2 }} on {{ worker.nproc }} cores">
+          {% if worker.load_percentage >= 100 %}
+          <div class="progress-bar progress-bar-danger"
+          {% elif worker.load_percentage >= 75 %}
+          <div class="progress-bar progress-bar-warning"
+          {% else %}
+          <div class="progress-bar progress-bar-success"
+          {% endif %}
+               role="progressbar" style="width: {% if worker.load_percentage >= 100 %}100{% else %}{{ worker.load_percentage|floatformat:0 }}{% endif %}%;">
+            {{ worker.load_percentage|floatformat:0 }}%
+          </div>
+        </div>
+      </dd>
+    </dl>
+    {% else %}
+    <p class="text-muted"><i>Not reported by this worker.</i></p>
+    {% endif %}
+  </div>
+  <div class="col-md-6">
+    <h4 class="modal-header">System</h4>
+    {% if worker.kernel or worker.boot_time %}
+    <dl class="dl-horizontal">
+      <dt>Kernel</dt>
+      <dd>{{ worker.kernel|default:"<i>...</i>" }}</dd>
+      <dt>Architecture</dt>
+      <dd>{{ worker.arch|default:"<i>...</i>" }}</dd>
+      <dt>Booted</dt>
+      {% if worker.boot_time %}
+      <dd title="{{ worker.boot_time }}">{{ worker.boot_time|timesince }} ago</dd>
+      {% else %}
+      <dd><i>...</i></dd>
+      {% endif %}
+    </dl>
+    {% else %}
+    <p class="text-muted"><i>Not reported by this worker.</i></p>
+    {% endif %}
+  </div>
+</div>
+<p class="text-muted"><small>Measured when the worker last pinged, {{ worker.last_ping|timesince }} ago.</small></p>
+{% endif %}
+
 <hr/>
 <h3>Devices Attached</h3>
 {% render_table worker_device_table %}

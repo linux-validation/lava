@@ -615,3 +615,140 @@ def test_internal_v1_workers_post(client, mocker, settings):
         "name": "worker-02",
         "token": Worker.objects.get(hostname="worker-02").token,
     }
+
+
+PING_STATS = {
+    "kernel": "6.12.73+deb13-amd64",
+    "arch": "x86_64",
+    "cpu_model": "Intel(R) Core(TM) i7-10710U CPU @ 1.10GHz",
+    "nproc": "12",
+    "load_1": "1.42",
+    "load_5": "2.01",
+    "load_15": "1.87",
+    "mem_total": "34359738368",
+    "mem_available": "22548578304",
+    "tmp_dir": "/var/lib/lava/dispatcher/tmp",
+    "tmp_disk_total": "983822893056",
+    "tmp_disk_free": "646378768384",
+    "uptime": "3600",
+}
+
+
+def ping_with(client, token, **params):
+    return client.get(
+        reverse("lava.scheduler.internal.v1.workers", args=["worker-01"]),
+        {"version": __version__, **params},
+        HTTP_LAVA_TOKEN=token,
+    )
+
+
+@pytest.mark.django_db
+def test_internal_v1_workers_capacity(client, settings):
+    settings.ALLOW_VERSION_MISMATCH = False
+    Worker.objects.create(
+        hostname="worker-01", health=Worker.HEALTH_ACTIVE, state=Worker.STATE_OFFLINE
+    )
+    token = Worker.objects.get(hostname="worker-01").token
+
+    # A worker that reports nothing still pings, and stores nothing.
+    assert ping_with(client, token).status_code == 200
+    w = Worker.objects.get(hostname="worker-01")
+    assert w.nproc is None
+    assert w.tmp_disk_free is None
+    assert w.boot_time is None
+
+    assert ping_with(client, token, **PING_STATS).status_code == 200
+    w = Worker.objects.get(hostname="worker-01")
+    assert w.kernel == "6.12.73+deb13-amd64"
+    assert w.arch == "x86_64"
+    assert w.cpu_model == "Intel(R) Core(TM) i7-10710U CPU @ 1.10GHz"
+    assert w.nproc == 12
+    assert w.load_1 == 1.42
+    assert w.load_15 == 1.87
+    assert w.mem_total == 34359738368
+    assert w.tmp_dir == "/var/lib/lava/dispatcher/tmp"
+    assert w.tmp_disk_free == 646378768384
+    # uptime is stored as the moment the worker booted
+    assert w.boot_time is not None
+    assert 3550 < (timezone.now() - w.boot_time).total_seconds() < 3650
+
+
+@pytest.mark.django_db
+def test_internal_v1_workers_capacity_is_optional(client, settings):
+    # Nothing a worker reports, or fails to report, may break its ping.
+    settings.ALLOW_VERSION_MISMATCH = False
+    Worker.objects.create(
+        hostname="worker-01", health=Worker.HEALTH_ACTIVE, state=Worker.STATE_OFFLINE
+    )
+    token = Worker.objects.get(hostname="worker-01").token
+    assert ping_with(client, token, **PING_STATS).status_code == 200
+
+    # Garbage is ignored rather than stored or raised, and the previously
+    # reported value is kept.
+    junk = {"nproc": "many", "load_1": "", "tmp_disk_free": "1.5", "uptime": "ages"}
+    assert ping_with(client, token, **junk).status_code == 200
+    w = Worker.objects.get(hostname="worker-01")
+    assert w.nproc == 12
+    assert w.load_1 == 1.42
+    assert w.tmp_disk_free == 646378768384
+
+    # Over-long strings are truncated to fit rather than blowing up the insert.
+    assert (
+        ping_with(client, token, cpu_model="C" * 500, tmp_dir="/d" * 500).status_code
+        == 200
+    )
+    w = Worker.objects.get(hostname="worker-01")
+    assert len(w.cpu_model) == 128
+    assert len(w.tmp_dir) == 256
+
+
+@pytest.mark.django_db
+def test_internal_v1_workers_boot_time_is_stable(client, settings):
+    # Recomputing boot_time from every ping would make it drift by a second
+    # each time; it should only move when the worker actually rebooted.
+    settings.ALLOW_VERSION_MISMATCH = False
+    Worker.objects.create(
+        hostname="worker-01", health=Worker.HEALTH_ACTIVE, state=Worker.STATE_OFFLINE
+    )
+    token = Worker.objects.get(hostname="worker-01").token
+
+    ping_with(client, token, uptime="100000")
+    first = Worker.objects.get(hostname="worker-01").boot_time
+
+    # a later ping, uptime advanced by the same wall clock: same boot moment
+    ping_with(client, token, uptime="100020")
+    assert Worker.objects.get(hostname="worker-01").boot_time == first
+
+    # a reboot resets uptime, which must move boot_time
+    ping_with(client, token, uptime="30")
+    rebooted = Worker.objects.get(hostname="worker-01").boot_time
+    assert rebooted > first
+
+
+def test_worker_capacity_properties():
+    # Percentages are computed, not reported, and cope with a worker that
+    # reported only some of it.
+    w = Worker(hostname="w", tmp_disk_total=1000, tmp_disk_free=250)
+    assert w.tmp_disk_used == 750
+    assert w.tmp_disk_used_percentage == 75
+
+    w = Worker(hostname="w", mem_total=800, mem_available=200)
+    assert w.mem_used == 600
+    assert w.mem_used_percentage == 75
+
+    w = Worker(hostname="w", nproc=4, load_1=6.0)
+    assert w.load_percentage == 150  # over-committed
+
+    empty = Worker(hostname="w")
+    assert empty.tmp_disk_used is None
+    assert empty.tmp_disk_used_percentage is None
+    assert empty.mem_used is None
+    assert empty.mem_used_percentage is None
+    assert empty.load_percentage is None
+
+    # never divide by a zero the worker reported
+    assert (
+        Worker(hostname="w", tmp_disk_total=0, tmp_disk_free=0).tmp_disk_used_percentage
+        is None
+    )
+    assert Worker(hostname="w", nproc=0, load_1=1.0).load_percentage is None

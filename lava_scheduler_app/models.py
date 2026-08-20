@@ -431,6 +431,146 @@ class Worker(RestrictedObject):
         max_length=32, default=auth_token, help_text=gettext_lazy("Authorization token")
     )
 
+    # Capacity reported by the worker with each ping. All of these are optional:
+    # a worker from an older release reports none of them, and one that cannot
+    # read a figure reports only the others. They are a snapshot taken at
+    # "last_ping", not a history.
+    kernel = models.CharField(
+        verbose_name=gettext_lazy("Kernel"),
+        max_length=64,
+        null=True,
+        default=None,
+        blank=True,
+        editable=False,
+    )
+    arch = models.CharField(
+        verbose_name=gettext_lazy("Architecture"),
+        max_length=32,
+        null=True,
+        default=None,
+        blank=True,
+        editable=False,
+    )
+    boot_time = models.DateTimeField(
+        verbose_name=gettext_lazy("Booted"),
+        null=True,
+        default=None,
+        editable=False,
+        help_text=gettext_lazy(
+            "When the worker last booted, derived from the uptime it reports. "
+            "A change here means the worker rebooted."
+        ),
+    )
+    cpu_model = models.CharField(
+        verbose_name=gettext_lazy("CPU"),
+        max_length=128,
+        null=True,
+        default=None,
+        blank=True,
+        editable=False,
+    )
+    nproc = models.PositiveSmallIntegerField(
+        verbose_name=gettext_lazy("Cores"), null=True, default=None, editable=False
+    )
+    load_1 = models.FloatField(
+        verbose_name=gettext_lazy("Load average (1 minute)"),
+        null=True,
+        default=None,
+        editable=False,
+    )
+    load_5 = models.FloatField(
+        verbose_name=gettext_lazy("Load average (5 minutes)"),
+        null=True,
+        default=None,
+        editable=False,
+    )
+    load_15 = models.FloatField(
+        verbose_name=gettext_lazy("Load average (15 minutes)"),
+        null=True,
+        default=None,
+        editable=False,
+    )
+    tmp_dir = models.CharField(
+        verbose_name=gettext_lazy("Job temporary directory"),
+        max_length=256,
+        null=True,
+        default=None,
+        blank=True,
+        editable=False,
+        help_text=gettext_lazy(
+            "Directory the worker stores temporary job files in, which the "
+            "disk figures below describe"
+        ),
+    )
+    tmp_disk_total = models.BigIntegerField(
+        verbose_name=gettext_lazy("Job storage size"),
+        null=True,
+        default=None,
+        editable=False,
+    )
+    tmp_disk_free = models.BigIntegerField(
+        verbose_name=gettext_lazy("Job storage free"),
+        null=True,
+        default=None,
+        editable=False,
+    )
+    mem_total = models.BigIntegerField(
+        verbose_name=gettext_lazy("Memory size"),
+        null=True,
+        default=None,
+        editable=False,
+    )
+    mem_available = models.BigIntegerField(
+        verbose_name=gettext_lazy("Memory available"),
+        null=True,
+        default=None,
+        editable=False,
+        help_text=gettext_lazy(
+            "Memory available for new work without swapping, which is not the "
+            "same as unused memory: it counts reclaimable cache"
+        ),
+    )
+
+    @property
+    def tmp_disk_used(self) -> int | None:
+        if self.tmp_disk_total is None or self.tmp_disk_free is None:
+            return None
+        return self.tmp_disk_total - self.tmp_disk_free
+
+    @property
+    def tmp_disk_used_percentage(self) -> float | None:
+        """How full the job storage is, or None when the worker did not say."""
+        if not self.tmp_disk_total or self.tmp_disk_free is None:
+            return None
+        return 100 * (self.tmp_disk_total - self.tmp_disk_free) / self.tmp_disk_total
+
+    @property
+    def mem_used(self) -> int | None:
+        if self.mem_total is None or self.mem_available is None:
+            return None
+        return self.mem_total - self.mem_available
+
+    @property
+    def mem_used_percentage(self) -> float | None:
+        """
+        How much of the worker's memory is spoken for. Based on the available
+        figure, so reclaimable page cache does not read as memory pressure.
+        """
+        if not self.mem_total or self.mem_available is None:
+            return None
+        return 100 * (self.mem_total - self.mem_available) / self.mem_total
+
+    @property
+    def load_percentage(self) -> float | None:
+        """
+        The 1 minute load average as a percentage of the cores available to the
+        worker. 100% means the run queue matches the core count; above that the
+        worker has more work than it can run at once.
+        """
+        if not self.nproc or self.load_1 is None:
+            return None
+        return 100 * self.load_1 / self.nproc
+
     # Add default values for _old values
     _old_health: int | None = None
     _old_state: int | None = None
