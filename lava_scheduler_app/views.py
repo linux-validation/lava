@@ -1446,6 +1446,75 @@ def internal_v1_jobs_logs(request, pk):
     return JsonResponse({"line_count": line_count})
 
 
+# Capacity figures a worker may report with its ping, and how to read each.
+# Every one is optional, so that a worker from an older release - or one that
+# could not read a figure - still pings successfully.
+WORKER_PING_STATS = {
+    "kernel": lambda value: value[:64],
+    "arch": lambda value: value[:32],
+    "cpu_model": lambda value: value[:128],
+    "nproc": int,
+    "load_1": float,
+    "load_5": float,
+    "load_15": float,
+    "mem_total": int,
+    "mem_available": int,
+    "tmp_dir": lambda value: value[:256],
+    "tmp_disk_total": int,
+    "tmp_disk_free": int,
+}
+
+
+def update_worker_stats(worker, params):
+    """
+    Copy onto the worker the capacity figures it reported, returning the names
+    of the fields that changed so the caller can save them.
+
+    A figure that was not reported, or that cannot be read, leaves the previous
+    value alone rather than failing the ping: these are advisory, and a worker
+    that stops reporting one is still a working worker. Use last_ping to judge
+    how fresh they are.
+    """
+    fields = []
+    for name, parse in WORKER_PING_STATS.items():
+        value = params.get(name)
+        if value is None:
+            continue
+        try:
+            setattr(worker, name, parse(value))
+        except (TypeError, ValueError):
+            continue
+        fields.append(name)
+
+    if boot_time := parse_boot_time(worker, params.get("uptime")):
+        worker.boot_time = boot_time
+        fields.append("boot_time")
+    return fields
+
+
+def parse_boot_time(worker, uptime):
+    """
+    Turn the uptime a worker reports into the moment it booted, or None to
+    leave the stored value alone.
+
+    Derived rather than reported so the page can show a live "up for ...".
+    Recomputing it from every ping would make it wander by a second or so each
+    time, which would both churn the database and hide the thing worth seeing,
+    so keep the stored value unless it moved far enough to mean a real reboot.
+    """
+    if uptime is None:
+        return None
+    try:
+        booted = timezone.now() - datetime.timedelta(seconds=int(uptime))
+    except (TypeError, ValueError):
+        return None
+    if worker.boot_time is not None and abs(
+        worker.boot_time - booted
+    ) < datetime.timedelta(minutes=1):
+        return None
+    return booted
+
+
 @require_http_methods(["GET", "POST"])
 @csrf_exempt
 def internal_v1_workers(request, pk=None):
@@ -1472,6 +1541,9 @@ def internal_v1_workers(request, pk=None):
         # Save worker version
         fields = ["version"]
         worker.version = version
+
+        # Save whatever capacity figures came with the ping
+        fields.extend(update_worker_stats(worker, request.GET))
         if version_mismatch and not settings.ALLOW_VERSION_MISMATCH:
             # If the version does not match and worker is online, go offline
             if worker.state == Worker.STATE_ONLINE:

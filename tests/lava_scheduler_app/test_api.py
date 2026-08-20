@@ -678,7 +678,9 @@ protocols:
 def setup(db):
     user = User.objects.create_user(username="user", password="user")  # nosec
     Group.objects.create(name="group")
-    User.objects.create_user(username="admin", password="admin", is_superuser=True)  # nosec
+    User.objects.create_user(
+        username="admin", password="admin", is_superuser=True
+    )  # nosec
     User.objects.create_user(
         username="staff", password="staff", is_staff=True, is_superuser=False
     )
@@ -1376,7 +1378,9 @@ def test_device_types_add(setup):
     )
     assert DeviceType.objects.count() == 3  # nosec
     # Should be ordered b2260, qemu
-    assert DeviceType.objects.all().order_by("name")[0].name == "aqemu:'-)[]~!,;"  # nosec
+    assert (
+        DeviceType.objects.all().order_by("name")[0].name == "aqemu:'-)[]~!,;"
+    )  # nosec
 
 
 @pytest.mark.django_db
@@ -1443,7 +1447,9 @@ def test_device_types_set_health_check(setup, mocker, tmp_path):
     server("admin", "admin").scheduler.device_types.set_health_check(
         "qemu", "hello world"
     )
-    assert (tmp_path / "qemu.yaml").read_text(encoding="utf-8") == "hello world"  # nosec
+    assert (tmp_path / "qemu.yaml").read_text(
+        encoding="utf-8"
+    ) == "hello world"  # nosec
 
     # 2. Invalid name
     with pytest.raises(xmlrpc.client.Fault) as exc:
@@ -2524,8 +2530,25 @@ def test_workers_show(setup):
         "default_config",
         "default_env",
         "default_env_dut",
+        # capacity reported by the worker with its ping
+        "kernel",
+        "arch",
+        "boot_time",
+        "cpu_model",
+        "nproc",
+        "load_1",
+        "load_5",
+        "load_15",
+        "mem_total",
+        "mem_available",
+        "tmp_dir",
+        "tmp_disk_total",
+        "tmp_disk_free",
     }
     assert data["hostname"] == "example.com"  # nosec
+    # a worker that has never pinged reports none of them
+    assert data["nproc"] is None  # nosec
+    assert data["tmp_disk_free"] is None  # nosec
     assert data["job_limit"] == 0  # nosec
 
     with pytest.raises(xmlrpc.client.Fault) as exc:
