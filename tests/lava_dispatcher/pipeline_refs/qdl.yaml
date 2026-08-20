@@ -1,6 +1,6 @@
 - class: QDLAction
   name: qdl-deploy
-  level: "1"
+  level: '1'
   max_retries: 1
   description: deploy qcomflash tarball using qdl
   summary: qdl deployment
@@ -8,7 +8,7 @@
   pipeline:
   - class: DownloaderAction
     name: download-retry
-    level: "1.1"
+    level: '1.1'
     max_retries: 1
     description: download with retry
     summary: download-retry
@@ -22,9 +22,16 @@
       summary: http download
       timeout: 12000
       url: https://example.com/qcomflash.tar.gz
+  - class: ExtractQcomflashAction
+    name: qdl-extract
+    level: '1.2'
+    max_retries: 1
+    description: extract the qcomflash tarball
+    summary: extract qcomflash tarball
+    timeout: 12000
 - class: BootQDLRetry
   name: boot-qdl-retry
-  level: "2"
+  level: '2'
   max_retries: 1
   description: boot to EDL mode using any available method
   summary: boot to EDL mode
@@ -32,14 +39,14 @@
   pipeline:
   - class: ConnectDevice
     name: connect-device
-    level: "2.1"
+    level: '2.1'
     max_retries: 1
     description: use the configured command to connect serial to the device
     summary: run connection command
     timeout: 300
   - class: ResetDevice
     name: reset-device
-    level: "2.2"
+    level: '2.2'
     max_retries: 1
     description: reboot or power-cycle the device
     summary: reboot the device
@@ -54,28 +61,28 @@
       timeout: 300
   - class: EnterQDL
     name: enter-qdl
-    level: "2.3"
+    level: '2.3'
     max_retries: 1
     description: enter QDL mode
     summary: enter QDL mode
     timeout: 300
   - class: WaitQDLDeviceAction
     name: wait-qdl-device
-    level: "2.4"
+    level: '2.4'
     max_retries: 1
     description: wait for QDL device
     summary: wait for QDL device
     timeout: 300
   - class: FlashQDLAction
     name: flash-qdl
-    level: "2.5"
+    level: '2.5'
     max_retries: 1
     description: use qdl to flash flat build to the board
     summary: use qdl to flash flat build to the board
     timeout: 300
 - class: MinimalBoot
   name: minimal-boot
-  level: "3"
+  level: '3'
   max_retries: 1
   description: connect and reset device
   summary: connect and reset device
@@ -83,14 +90,14 @@
   pipeline:
   - class: ConnectDevice
     name: connect-device
-    level: "3.1"
+    level: '3.1'
     max_retries: 1
     description: use the configured command to connect serial to the device
     summary: run connection command
     timeout: 180
   - class: ResetDevice
     name: reset-device
-    level: "3.2"
+    level: '3.2'
     max_retries: 1
     description: reboot or power-cycle the device
     summary: reboot the device
@@ -105,9 +112,10 @@
       timeout: 180
   - class: AutoLoginAction
     name: auto-login-action
-    level: "3.3"
+    level: '3.3'
     max_retries: 1
-    description: automatically login after boot using job parameters and checking for messages.
+    description: automatically login after boot using job parameters and checking
+      for messages.
     summary: Auto-login after boot with support for kernel messages.
     timeout: 180
     pipeline:
@@ -120,7 +128,7 @@
       timeout: 180
 - class: FinalizeAction
   name: finalize
-  level: "4"
+  level: '4'
   max_retries: 1
   description: finish the process and cleanup
   summary: finalize the job
@@ -128,14 +136,14 @@
   pipeline:
   - class: PowerOff
     name: power-off
-    level: "4.1"
+    level: '4.1'
     max_retries: 1
     description: discontinue power to device
     summary: send power_off command
     timeout: 10
   - class: ReadFeedback
     name: read-feedback
-    level: "4.2"
+    level: '4.2'
     max_retries: 1
     description: Check for messages on all other namespaces
     summary: Read from other namespaces
