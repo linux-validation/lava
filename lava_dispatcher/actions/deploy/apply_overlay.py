@@ -9,7 +9,6 @@ import os
 import shutil
 import zipfile
 from functools import partial
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lava_common.constants import RAMDISK_FNAME, UBOOT_DEFAULT_HEADER_LENGTH
@@ -1193,6 +1192,8 @@ class ApplyOverlayAvh(Action):
 class ApplyQDLOverlay(Action):
     """
     Apply lava overlay to the specific image inside qcomflash tarball.
+
+    The tarball is extracted by ExtractQcomflashAction, which runs first.
     """
 
     name = "apply-overlay-qdl"
@@ -1220,42 +1221,14 @@ class ApplyQDLOverlay(Action):
             self.logger.warning("No overlay to apply")
             return connection
 
-        qcomflash = None
-        for action in self.get_namespace_keys(  # pylint: disable=unused-variable
-            "download-action"
-        ):
-            qcomflash = self.get_namespace_data(
-                action="download-action", label="qcomflash", key="file"
-            )
-            break
-        if qcomflash is None:
-            raise JobError("QCOMflash file missing")
-
         self.logger.info(f"applying overlay to {self.rootfs_image}")
         qdl_dir = self.get_namespace_data(
             action="qdl-deploy", label="qdl-directory", key="directory"
         )
 
-        dest = Path(qdl_dir)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-
-        # ToDo: take compression from download action?
-        self.logger.info(f"decompressing {qcomflash}")
-        out_path = decompress_file(qcomflash, "gz")
-
-        self.logger.info(f"extracting {out_path} to {qdl_dir}")
-        untar_file(out_path, qdl_dir)
-
         if not os.path.isfile(f"{qdl_dir}/{self.rootfs_image}"):
             self.logger.error(f"rootfs_image file '{self.rootfs_image}' doesn't exist")
             raise JobError("rootfs_file missing from tarball")
         copy_in_overlay(self, f"{qdl_dir}/{self.rootfs_image}", None, overlay_file)
-
-        self.set_namespace_data(
-            action="qdl-deploy",
-            label="directory-decompress",
-            key="directory-decompress",
-            value=True,
-        )
 
         return connection

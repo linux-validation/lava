@@ -8,6 +8,9 @@ from unittest.mock import patch
 
 from lava_common.exceptions import ConfigurationError, JobError
 from lava_dispatcher.actions.boot.qdl import FlashQDLAction
+from lava_dispatcher.actions.deploy.apply_overlay import AppendOverlays
+from lava_dispatcher.actions.deploy.download import DownloaderAction
+from lava_dispatcher.actions.deploy.qdl import ExtractQcomflashAction
 from tests.lava_dispatcher.test_basic import Factory, LavaDispatcherTestCase
 
 
@@ -41,6 +44,58 @@ class TestQDLBootAction(LavaDispatcherTestCase):
         self.assertEqual(len(job.pipeline.actions), 5)
         with self.assertRaises(JobError):
             job.validate()
+
+    @patch("lava_dispatcher.action.Action.parsed_command")
+    @patch("lava_dispatcher.actions.boot.qdl.which")
+    def test_qdl_job_overlays(self, which_mock, parsed_mock):
+        which_mock.return_value = "/foo/qdl"
+        parsed_mock.return_value = "qdl version v2.7"
+        job = Factory().create_job(
+            "qcs6490-rb3gen2", "sample_jobs/qdl-boot-overlays.yaml"
+        )
+        job.device.update({"board_qdl_id": "abcdef12"})
+        job.device.update({"board_id": "abcdef12"})
+        job.validate()
+        description_ref = self.pipeline_reference("qdl-overlays.yaml", job=job)
+        self.assertEqual(description_ref, job.pipeline.describe())
+
+        deploy = job.pipeline.actions[0]
+        # The downloader must not see "overlays": it would append them to the
+        # qcomflash tarball instead of to the image inside it.
+        downloader = deploy.pipeline.find_action(DownloaderAction)
+        self.assertNotIn("overlays", downloader.params)
+
+        extract = deploy.pipeline.find_action(ExtractQcomflashAction)
+        self.assertEqual("disk-sdcard.img2", extract.rootfs_image)
+
+        append = deploy.pipeline.find_action(AppendOverlays)
+        # AppendOverlays looks the image up under this key, which is what
+        # ExtractQcomflashAction publishes it as.
+        self.assertEqual("qcomflash.rootfs", append.key)
+        self.assertEqual(extract.rootfs_key, append.key)
+
+        # one download for the tarball, one per non-lava overlay
+        labels = [
+            action.key
+            for action in deploy.pipeline.actions
+            if isinstance(action, DownloaderAction)
+        ]
+        self.assertEqual(
+            ["qcomflash", "qcomflash.rootfs.modules", "qcomflash.rootfs.config"],
+            labels,
+        )
+
+    @patch("lava_dispatcher.actions.boot.qdl.which")
+    def test_qdl_job_overlays_and_apply_overlay(self, which_mock):
+        which_mock.return_value = "/foo/qdl"
+        job = Factory().create_job(
+            "qcs6490-rb3gen2", "sample_jobs/qdl-boot-overlays-conflict.yaml"
+        )
+        job.device.update({"board_qdl_id": "abcdef12"})
+        job.device.update({"board_id": "abcdef12"})
+        with self.assertRaises(JobError) as exc:
+            job.validate()
+        self.assertIn("cannot be used together", str(exc.exception))
 
     @patch("lava_dispatcher.actions.boot.qdl.which")
     def test_qdl_job_no_qdl(self, which_mock):

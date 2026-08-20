@@ -1,0 +1,60 @@
+device_type: qcs6490-rb3gen2
+job_name: qcs6490 qdl boot with overlays and apply-overlay
+priority: 50
+timeouts:
+  job:
+    minutes: 210
+visibility: public
+
+actions:
+- deploy:
+    rootfs_image: "disk-sdcard.img2"
+    qcomflash:
+      url: 'https://example.com/qcomflash.tar.gz'
+      apply-overlay: true
+      format: ext4
+      overlays:
+        lava: true
+        modules:
+          url: 'https://example.com/modules.tar.xz'
+          compression: xz
+          format: tar
+          path: /
+        config:
+          url: 'https://example.com/my.conf'
+          format: file
+          path: /etc/my.conf
+    timeout:
+      minutes: 200
+    to: qdl
+- boot:
+    firehose_program: "prog_firehose_ddr.elf"
+    rawprogram: "rawprogram0.xml"
+    patch: "patch0.xml"
+    storage: "ufs"
+    path: "."
+    debug: true
+    timeout:
+      minutes: 5
+    method: qdl
+- boot:
+    method: minimal
+    prompts:
+    - root@debian
+    timeout:
+      minutes: 3
+- test:
+    timeout:
+      minutes: 5
+    definitions:
+    - repository:
+        metadata:
+          format: Lava-Test Test Definition 1.0
+          name: smoke-tests
+          description: smoke tests
+        run:
+          steps:
+          - lava-test-case uname --shell uname -a
+      from: inline
+      name: smoke-tests
+      path: inline/smoke-tests.yaml
