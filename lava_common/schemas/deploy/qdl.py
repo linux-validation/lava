@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from voluptuous import Any, Length, Optional, Required
+from voluptuous import Optional, Required
 
 from lava_common.schemas import deploy
 
@@ -12,13 +12,10 @@ from lava_common.schemas import deploy
 def schema():
     base = {
         Required("to"): "qdl",
-        Required("qcomflash"): Any(
-            {
-                Any(str): deploy.url(),
-                Optional("apply-overlay"): bool,
-            },
-            Length(min=1),
-        ),
+        # deploy.url() also accepts "format" plus an "overlays" dictionary,
+        # which describe the image named by "rootfs_image" inside the tarball,
+        # not the tarball itself.
+        Required("qcomflash"): deploy.url({Optional("apply-overlay"): bool}),
         Optional("uniquify"): bool,
         Optional("rootfs_image"): str,
     }

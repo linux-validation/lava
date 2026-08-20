@@ -1,0 +1,276 @@
+- class: QDLAction
+  name: qdl-deploy
+  level: '1'
+  max_retries: 1
+  description: deploy qcomflash tarball using qdl
+  summary: qdl deployment
+  timeout: 12000
+  pipeline:
+  - class: OverlayAction
+    name: lava-overlay
+    level: '1.1'
+    max_retries: 1
+    description: add lava scripts during deployment for test shell use
+    summary: overlay the lava support scripts
+    timeout: 12000
+    pipeline:
+    - class: MultinodeOverlayAction
+      name: lava-multinode-overlay
+      level: 1.1.1
+      max_retries: 1
+      description: add lava scripts during deployment for multinode test shell use
+      summary: overlay the lava multinode scripts
+      timeout: 12000
+    - class: TestDefinitionAction
+      name: test-definition
+      level: 1.1.2
+      max_retries: 1
+      description: load test definitions into image
+      summary: loading test definitions
+      timeout: 12000
+      pipeline:
+      - class: InlineRepoAction
+        name: inline-repo-action
+        level: 1.1.2.1
+        max_retries: 1
+        description: apply inline test definition to the test image
+        summary: extract inline test definition
+        timeout: 12000
+      - class: TestOverlayAction
+        name: test-overlay
+        level: 1.1.2.2
+        max_retries: 1
+        description: overlay test support files onto image
+        summary: applying LAVA test overlay
+        timeout: 12000
+      - class: TestInstallAction
+        name: test-install-overlay
+        level: 1.1.2.3
+        max_retries: 1
+        description: overlay dependency installation support files onto image
+        summary: applying LAVA test install scripts
+        timeout: 12000
+      - class: TestRunnerAction
+        name: test-runscript-overlay
+        level: 1.1.2.4
+        max_retries: 1
+        description: overlay run script onto image
+        summary: applying LAVA test run script
+        timeout: 12000
+    - class: CompressOverlay
+      name: compress-overlay
+      level: 1.1.3
+      max_retries: 1
+      description: Create a lava overlay tarball and store alongside the job
+      summary: Compress the lava overlay files
+      timeout: 12000
+  - class: DownloaderAction
+    name: download-retry
+    level: '1.2'
+    max_retries: 1
+    description: download with retry
+    summary: download-retry
+    timeout: 12000
+    pipeline:
+    - class: HttpDownloadAction
+      name: http-download
+      level: 1.2.1
+      max_retries: 1
+      description: use http to download the file
+      summary: http download
+      timeout: 12000
+      url: https://example.com/qcomflash.tar.gz
+  - class: DownloaderAction
+    name: download-retry
+    level: '1.3'
+    max_retries: 1
+    description: download with retry
+    summary: download-retry
+    timeout: 12000
+    pipeline:
+    - class: HttpDownloadAction
+      name: http-download
+      level: 1.3.1
+      max_retries: 1
+      description: use http to download the file
+      summary: http download
+      timeout: 12000
+      url: https://example.com/modules.tar.xz
+  - class: DownloaderAction
+    name: download-retry
+    level: '1.4'
+    max_retries: 1
+    description: download with retry
+    summary: download-retry
+    timeout: 12000
+    pipeline:
+    - class: HttpDownloadAction
+      name: http-download
+      level: 1.4.1
+      max_retries: 1
+      description: use http to download the file
+      summary: http download
+      timeout: 12000
+      url: https://example.com/my.conf
+  - class: ExtractQcomflashAction
+    name: qdl-extract
+    level: '1.5'
+    max_retries: 1
+    description: extract the qcomflash tarball
+    summary: extract qcomflash tarball
+    timeout: 12000
+  - class: AppendOverlays
+    name: append-overlays
+    level: '1.6'
+    max_retries: 1
+    description: append overlays to an image
+    summary: append overlays to an image
+    timeout: 12000
+- class: BootQDLRetry
+  name: boot-qdl-retry
+  level: '2'
+  max_retries: 1
+  description: boot to EDL mode using any available method
+  summary: boot to EDL mode
+  timeout: 300
+  pipeline:
+  - class: ConnectDevice
+    name: connect-device
+    level: '2.1'
+    max_retries: 1
+    description: use the configured command to connect serial to the device
+    summary: run connection command
+    timeout: 300
+  - class: ResetDevice
+    name: reset-device
+    level: '2.2'
+    max_retries: 1
+    description: reboot or power-cycle the device
+    summary: reboot the device
+    timeout: 300
+    pipeline:
+    - class: SendRebootCommands
+      name: send-reboot-commands
+      level: 2.2.1
+      max_retries: 1
+      description: Issue a reboot command on the device
+      summary: Issue a reboot command on the device
+      timeout: 300
+  - class: EnterQDL
+    name: enter-qdl
+    level: '2.3'
+    max_retries: 1
+    description: enter QDL mode
+    summary: enter QDL mode
+    timeout: 300
+  - class: WaitQDLDeviceAction
+    name: wait-qdl-device
+    level: '2.4'
+    max_retries: 1
+    description: wait for QDL device
+    summary: wait for QDL device
+    timeout: 300
+  - class: FlashQDLAction
+    name: flash-qdl
+    level: '2.5'
+    max_retries: 1
+    description: use qdl to flash flat build to the board
+    summary: use qdl to flash flat build to the board
+    timeout: 300
+- class: MinimalBoot
+  name: minimal-boot
+  level: '3'
+  max_retries: 1
+  description: connect and reset device
+  summary: connect and reset device
+  timeout: 180
+  pipeline:
+  - class: ConnectDevice
+    name: connect-device
+    level: '3.1'
+    max_retries: 1
+    description: use the configured command to connect serial to the device
+    summary: run connection command
+    timeout: 180
+  - class: ResetDevice
+    name: reset-device
+    level: '3.2'
+    max_retries: 1
+    description: reboot or power-cycle the device
+    summary: reboot the device
+    timeout: 180
+    pipeline:
+    - class: SendRebootCommands
+      name: send-reboot-commands
+      level: 3.2.1
+      max_retries: 1
+      description: Issue a reboot command on the device
+      summary: Issue a reboot command on the device
+      timeout: 180
+  - class: AutoLoginAction
+    name: auto-login-action
+    level: '3.3'
+    max_retries: 1
+    description: automatically login after boot using job parameters and checking
+      for messages.
+    summary: Auto-login after boot with support for kernel messages.
+    timeout: 180
+    pipeline:
+    - class: LoginAction
+      name: login-action
+      level: 3.3.1
+      max_retries: 1
+      description: Real login action.
+      summary: Login after boot.
+      timeout: 180
+  - class: ExpectShellSession
+    name: expect-shell-connection
+    level: '3.4'
+    max_retries: 1
+    description: Wait for a shell
+    summary: Expect a shell prompt
+    timeout: 180
+  - class: ExportDeviceEnvironment
+    name: export-device-env
+    level: '3.5'
+    max_retries: 1
+    description: Exports environment variables to the device
+    summary: Exports environment variables action
+    timeout: 180
+- class: TestShellRetry
+  name: lava-test-retry
+  level: '4'
+  max_retries: 1
+  description: Retry wrapper for lava-test-shell
+  summary: Retry support for Lava Test Shell
+  timeout: 300
+  pipeline:
+  - class: TestShellAction
+    name: lava-test-shell
+    level: '4.1'
+    max_retries: 1
+    description: Executing lava-test-runner
+    summary: Lava Test Shell
+    timeout: 300
+- class: FinalizeAction
+  name: finalize
+  level: '5'
+  max_retries: 1
+  description: finish the process and cleanup
+  summary: finalize the job
+  timeout: 30
+  pipeline:
+  - class: PowerOff
+    name: power-off
+    level: '5.1'
+    max_retries: 1
+    description: discontinue power to device
+    summary: send power_off command
+    timeout: 10
+  - class: ReadFeedback
+    name: read-feedback
+    level: '5.2'
+    max_retries: 1
+    description: Check for messages on all other namespaces
+    summary: Read from other namespaces
+    timeout: 30
