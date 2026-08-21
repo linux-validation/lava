@@ -430,8 +430,9 @@ class ShellSession:
         Listen to output and log as feedback
         Returns the number of characters read.
         """
-        if not self.connected or self.raw_connection.closed:
-            # connection has already been closed: reading would raise
+        if not self.connected or not self.raw_connection or self.raw_connection.closed:
+            # Connection already gone, or its file descriptor closed under it,
+            # as a finalised shell leaves it: reading would raise
             # ValueError("I/O operation on closed file.")
             return 0
         if timeout < 0.0:
