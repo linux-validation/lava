@@ -14,6 +14,7 @@ board_qdl_id: '{{ board_qdl_id }}'
 board_id: '{{ board_id|default("QUSB_BULK_CID:0420_SN:" + board_qdl_id) }}'
 usb_vendor_id: '05c6'
 usb_product_id: '{{ usb_product_id|default('9008')}}'
+qdl_ramdump_product_id: '{{ qdl_ramdump_product_id|default('900e')}}'
 
 actions:
   deploy:
