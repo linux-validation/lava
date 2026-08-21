@@ -46,6 +46,19 @@
 #http_cache_include_rules: ["https://.*nxrm.com"]
 #http_cache_exclude_rules: ["https://10.*"]
 
+# Command used to deliver a qdl ramdump captured from a crashed board.
+# Where ramdumps are stored is site specific, so LAVA only runs this command
+# and passes the dump in the environment: LAVA_RAMDUMP_FILE (path on the
+# worker), LAVA_RAMDUMP_NAME (its filename) and LAVA_JOB_ID.
+# The command may print the URL of the uploaded dump as the last line of its
+# output, which LAVA records in the ramdump result. Its stderr is merged into
+# that output and its exit status is not read, so the URL must be the last
+# thing it writes to either stream and a failed upload must print nothing.
+# The output is never logged, so credentials used by the command stay out of
+# the job log. Without this key no ramdump is captured at all, since it would
+# be written to the job's temporary directory and deleted when the job ends.
+#ramdump_publish_command: /usr/local/bin/publish-ramdump
+
 # Directories to be bind mounted in test actions that run with docker.
 # Must be an array with exactly two/three items:
 # 1st item: the source directory in the host (mandatory)
