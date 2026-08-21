@@ -431,8 +431,10 @@ class ShellSession:
         Returns the number of characters read.
         """
         index = 0
-        if not self.raw_connection:
-            # connection has already been closed.
+        if not self.raw_connection or self.raw_connection.closed:
+            # Connection already gone, or its file descriptor closed under it,
+            # as a finalised shell leaves it. Reading would raise rather than
+            # report the nothing that is there.
             return index
         if timeout < 0.0:
             raise LAVABug("Invalid timeout value passed to listen_feedback()")

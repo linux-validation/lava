@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from lava_common.exceptions import TestError
+
 from lava_dispatcher.actions.test.docker import DockerTestShell
 from lava_dispatcher.actions.test.multinode import MultinodeMixin
 from lava_dispatcher.actions.test.shell import TestShellAction
@@ -365,3 +367,39 @@ def test_signal_device_command_failed(test_shell, mocker):
     connection.sendline.assert_called_once_with(
         "<LAVA_DEVICECMD_ACK power_on 3>", delay=mocker.ANY
     )
+
+
+def test_docker_test_shell_run_drops_namespace_when_the_test_fails(
+    first_test_action, mocker
+):
+    # A test that raises must still take its namespace down with it. Left
+    # behind, it holds a connection whose shell has just been finalised, and
+    # the read-feedback at the end of the job dies reading from it with
+    # "I/O operation on closed file".
+    mocker.patch(
+        "lava_dispatcher.actions.test.docker.DockerTestShell.get_namespace_data",
+        return_value=f"lava-{first_test_action.job.job_id}",
+    )
+    mocker.patch("lava_dispatcher.utils.docker.DockerRun.prepare")
+    mocker.patch("lava_dispatcher.actions.test.docker.ShellSession")
+    mocker.patch(
+        "lava_dispatcher.actions.test.docker.DockerTestShell.add_device_container_mappings"
+    )
+    mocker.patch("lava_dispatcher.utils.udev.get_udev_devices", return_value=[])
+    mocker.patch("lava_dispatcher.utils.docker.DockerRun.wait")
+    mocker.patch(
+        "lava_dispatcher.actions.test.shell.TestShellAction.run",
+        side_effect=TestError("Serial device doesnt exist"),
+    )
+    mocker.patch("lava_dispatcher.actions.test.docker.remove_device_container_mappings")
+    mocker.patch("lava_dispatcher.utils.docker.DockerRun.destroy")
+
+    connection = MagicMock()
+    connection.timeout = MagicMock()
+    action = first_test_action.pipeline.find_action(DockerTestShell)
+    action.test_docker_bind_mounts = []
+
+    with pytest.raises(TestError):
+        action.run(connection, 0)
+
+    assert "docker-test-shell" not in action.data

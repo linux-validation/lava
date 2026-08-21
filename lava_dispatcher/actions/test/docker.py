@@ -219,9 +219,13 @@ class DockerTestShell(TestShellAction, GetBoardId, DeviceContainerMappingMixin):
             # finish the container
             shell_connection.finalise()
             docker.destroy()
+            # Drop the namespace along with the container it described, even
+            # when the test raised. Leaving it behind leaves a connection
+            # registered whose shell has just been finalised, which the
+            # read-feedback at the end of the job would then try to read.
+            self.data.pop("docker-test-shell", None)
 
         # return the original connection untouched
-        self.data.pop("docker-test-shell")
         return connection
 
 
