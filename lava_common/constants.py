@@ -47,6 +47,11 @@ ACTION_TIMEOUT = 30
 # Max cleanup timeout
 CLEANUP_TIMEOUT = 5 * 60
 
+# Default wall-clock budget for a qdl ramdump capture. A full DDR dump over USB
+# routinely exceeds CLEANUP_TIMEOUT, so the capture runs under its own window
+# (overridable per-job via the 'ramdump_timeout' boot parameter).
+RAMDUMP_TIMEOUT = 15 * 60
+
 # mount point for download directory when postprocessing images (e.g. within
 # docker containers)
 LAVA_DOWNLOADS = "/lava-downloads"

@@ -684,6 +684,7 @@ class Action:
         error_msg: str | None = None,
         cwd: str | None = None,
         env: dict[str, str] | None = None,
+        silent: bool = False,
     ) -> int | None:
         """
         Run the given command on the dispatcher. If the command fail, a
@@ -695,6 +696,12 @@ class Action:
         :param: error_msg - the exception message.
         :param: cwd - the current working directory for this command
         :param: env - environment variables to pass to the command
+        :param: silent - if True, the command output is discarded instead of
+        being streamed to the job log. Use this for commands whose output would
+        otherwise leak sensitive data (credentials, signed URLs, tokens). Note
+        that the command line itself is still logged (and is visible in the
+        process list), so pass secrets via stdin or the environment, never as
+        an argument.
         :return: return code of the command
         """
         # Build the command list
@@ -716,7 +723,7 @@ class Action:
                 cwd=cwd,
                 encoding="utf-8",
                 codec_errors="replace",
-                logfile=cmd_logger,
+                logfile=None if silent else cmd_logger,
                 timeout=self.timeout.duration,
                 searchwindowsize=10,
                 # Debian type hits have too restrictive env= typing

@@ -481,6 +481,68 @@ def get_udev_devices(job=None, logger=None, device_info=None, required=False):
     return device_paths
 
 
+def usb_device_has_serial(properties, serial):
+    """
+    Whether the USB device with these properties is the board with this serial
+    number. Pass properties from get_device_properties(), which fills in from
+    sysfs what udev did not provide, as happens inside a container.
+
+    Most devices report a serial number descriptor, which udev exposes as
+    ID_SERIAL_SHORT. A Qualcomm board in EDL or crashdump mode does not: it
+    carries the serial inside its product string instead, in the form
+    "QUSB_BULK_CID:046A_SN:95BA0DAE". That is the same string a device
+    dictionary builds its board_id from, out of board_qdl_id. Accept either,
+    since which one a board offers depends on the mode it is in.
+
+    The product string is only searched for the serial rather than picked
+    apart, so in principle one board's serial could be found inside another's.
+    These are fixed width chip serials, so in practice one contains another
+    only when they are equal.
+    """
+    serial = str(serial)
+    if properties.get("ID_SERIAL_SHORT") == serial:
+        return True
+    return serial in properties.get("ID_PRODUCT", "")
+
+
+def usb_device_present(usb_vendor_id, usb_product_ids, serial=None):
+    """
+    Non-blocking check for a USB device matching the given vendor and one of
+    the given product ids that is connected *right now*. Unlike
+    wait_udev_event(), this does not block waiting for the device to appear - it
+    only inspects the devices that are currently present. Used to detect a board
+    that has re-enumerated into a different USB identity (e.g. EDL crashdump /
+    ramdump mode).
+
+    usb_product_ids may be a single product id or an iterable of them.
+
+    A worker drives several boards, so vendor and product alone identify a
+    *kind* of device rather than one board. Pass serial to match only the board
+    with that serial number; without it any matching board on the worker is
+    reported, which is rarely what a caller wants.
+
+    Returns the matched product id if such a device is present, otherwise None
+    (so the result is also usable as a boolean).
+    """
+    if isinstance(usb_product_ids, str):
+        usb_product_ids = (usb_product_ids,)
+    wanted = {str(pid) for pid in usb_product_ids}
+    context = pyudev.Context()
+    for device in context.list_devices(subsystem="usb"):
+        # not device.properties: a dispatcher running in a container often sees
+        # none of these as udev properties, only as sysfs attributes.
+        properties = get_device_properties(device)
+        if properties.get("ID_VENDOR_ID") != str(usb_vendor_id):
+            continue
+        product_id = properties.get("ID_MODEL_ID")
+        if product_id not in wanted:
+            continue
+        if serial is not None and not usb_device_has_serial(properties, serial):
+            continue
+        return product_id
+    return None
+
+
 def allow_fs_label(device):
     # boot/deploy methods that indicate that the device in question
     # will require a filesystem label to identify a device.
