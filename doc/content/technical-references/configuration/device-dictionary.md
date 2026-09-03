@@ -607,7 +607,7 @@ passed to the test container in EDL, fastboot and QDL mode:
 The fastboot serial number is left out when `fastboot_serial_number` is not
 set or is all zeros, for boards that don't boot to fastboot.
 
-#### qdl_enter_commands
+#### qdl_enter_command
 
 Normally to force a device to boot into EDL mode,
 a physical button must be pressed or a DIP switch must be set on the device.
@@ -615,11 +615,22 @@ In automated setups, like LAVA, it's possible to force a device into EDL mode us
 Some Qualcomm devices are shipped with an FTDI or UART based GPIO interface that allows remote control.
 More details on that can be found in the [Qualcomm Test Automation Controller] (https://github.com/qualcomm/qcom-test-automation-controller/) documentation.
 
-Note: `qdl_enter_commands` must be a list of strings.
+Like the other [command parameters](#commands), this accepts either a single
+string or a list of strings, which LAVA executes in order:
 
 ```jinja
-{% set qdl_enter_commands = ['/usr/local/bin/tac-api.py --serial DP05DD00 --command bootToEDL'] %}
+{% set qdl_enter_command = '/usr/local/bin/tac-api.py --serial DP05DD00 --command bootToEDL' %}
 ```
+
+```jinja
+{% set qdl_enter_command = [
+    '/usr/local/bin/tac-api.py --serial DP05DD00 --command bootToEDL',
+    '/usr/local/bin/tac-api.py --serial DP05DD00 --command powerOn'
+] %}
+```
+
+The older `qdl_enter_commands`, which only accepts a list of strings, is
+deprecated and is used only when `qdl_enter_command` is unset.
 
 ### Secondary media
 
