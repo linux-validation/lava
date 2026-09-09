@@ -3,9 +3,11 @@
 # on the NEWEST qualcomm-* branch of github.com/linux-validation/lava
 #
 # It is a reusable workflow, called from run-all-docker-builds.yml after the
-# image build finishes. It computes the tag the build produced and commits it
-# into the lava-server factory's staging docker-compose (source.foundries.io),
-# which triggers the Foundries OTA rollout to lava-staging.infra.foundries.io.
+# image build finishes. It commits the tag the build produced into the lava-server
+# factory's staging docker-compose (source.foundries.io) -- both the image every
+# lava service runs and the LAVA_SOURCE_REPO/LAVA_SOURCE_REF the lava-mcp container
+# advertises as the source of the deployed instance -- which triggers the Foundries
+# OTA rollout to lava-staging.infra.foundries.io.
 #
 # Required GitHub Actions secret (repo: linux-validation/lava):
 #   FIO_API_TOKEN  - a Foundries.io API token with source read+update scope
@@ -39,6 +41,9 @@ env:
   # Foundries factory containers repo to update (staging branch, hardcoded below).
   FACTORY_REPO: source.foundries.io/factories/lava-server/containers.git
   COMPOSE_PATH: lava-server/docker-compose.yml
+  # Git source of the deployed code, advertised by the lava-mcp container so agents
+  # know which tree to read for exact behaviour of this instance.
+  SOURCE_REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
   update-factory-staging:
@@ -55,6 +60,10 @@ jobs:
             exit 1
           fi
           NEW_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+          # The image tag is "<release>-<branch>-<commits>-<short sha>", so its last
+          # field is the commit the image was built from; a build sitting exactly on a
+          # release tag has no suffix and the tag itself is the ref.
+          SOURCE_REF="${IMAGE_TAG##*-}"
 
           # Authenticate to source.foundries.io per Foundries git-config docs
           # (API token with source-code access, sent as a basic auth header):
@@ -69,6 +78,14 @@ jobs:
           # Replace the tag on every line referencing the lava-server image.
           sed -i -E "s|(${IMAGE_NAME}):[^[:space:]]+|\\1:${IMAGE_TAG}|g" "${COMPOSE_PATH}"
 
+          # Point the lava-mcp container's LAVA source at the same commit.
+          for key in LAVA_SOURCE_REPO LAVA_SOURCE_REF; do
+            grep -qE "^[[:space:]]*${key}:" "${COMPOSE_PATH}" ||
+              echo "::warning::${key} not found in ${COMPOSE_PATH}; not updated."
+          done
+          sed -i -E "s|^([[:space:]]*LAVA_SOURCE_REPO:).*|\\1 ${SOURCE_REPO_URL}|" "${COMPOSE_PATH}"
+          sed -i -E "s|^([[:space:]]*LAVA_SOURCE_REF:).*|\\1 ${SOURCE_REF}|" "${COMPOSE_PATH}"
+
           if git diff --quiet -- "${COMPOSE_PATH}"; then
             echo "docker-compose already on ${NEW_IMAGE}; nothing to do."
             exit 0
@@ -76,6 +93,7 @@ jobs:
 
           echo "Updated image references:"
           grep -n "${IMAGE_NAME}" "${COMPOSE_PATH}" || true
+          grep -nE "^[[:space:]]*LAVA_SOURCE_(REPO|REF):" "${COMPOSE_PATH}" || true
 
           git config user.name  "lava-factory-bot"
           git config user.email "ci@linux-validation"
