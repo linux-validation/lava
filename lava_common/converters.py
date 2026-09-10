@@ -20,3 +20,20 @@ class JobIdConverter:
 
     def to_url(self, value: Any) -> str:
         return str(value)
+
+
+def register_job_id_converter() -> None:
+    """
+    Register JobIdConverter as "job_id", once.
+
+    Several apps route on job ids and each has to make sure the converter
+    exists before its urlpatterns are built. Converters are global and
+    Django 5.1 turned re-registering one into a ValueError, so the
+    registration has to be idempotent.
+    """
+    from django.urls import register_converter
+    from django.urls.converters import get_converters
+
+    if "job_id" in get_converters():
+        return
+    register_converter(JobIdConverter, "job_id")

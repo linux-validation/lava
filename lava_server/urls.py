@@ -6,11 +6,11 @@
 
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path, register_converter
+from django.urls import include, path
 from django.views.generic import TemplateView
 from django.views.i18n import JavaScriptCatalog
 
-from lava_common.converters import JobIdConverter
+from lava_common.converters import register_job_id_converter
 from lava_results_app.api import ResultsAPI
 from lava_scheduler_app.api import SchedulerAPI
 from lava_scheduler_app.api.aliases import SchedulerAliasesAPI
@@ -67,7 +67,7 @@ mapper.register(UsersAPI, "auth.users")
 mapper.register(UsersGroupsAPI, "auth.users.groups")
 mapper.register(UsersPermissionsAPI, "auth.users.perms")
 
-register_converter(JobIdConverter, "job_id")
+register_job_id_converter()
 
 # Auth backends
 auth_urls = [

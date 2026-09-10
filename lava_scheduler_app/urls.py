@@ -5,9 +5,9 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from django.urls import path, register_converter
+from django.urls import path
 
-from lava_common.converters import JobIdConverter
+from lava_common.converters import register_job_id_converter
 from lava_scheduler_app.views import (
     active_device_list,
     active_jobs,
@@ -72,7 +72,7 @@ from lava_scheduler_app.views import (
     workers,
 )
 
-register_converter(JobIdConverter, "job_id")
+register_job_id_converter()
 
 urlpatterns = (
     path("", index, name="lava.scheduler"),
