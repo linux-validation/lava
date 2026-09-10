@@ -11,7 +11,13 @@ from . import views
 router = ExtendedDefaultRouter()
 router.register(r"aliases", views.AliasViewSet)
 router.register(r"devices", views.DeviceViewSet)
-router.register(r"devicetypes", views.DeviceTypeViewSet)
+device_types_router = router.register(r"devicetypes", views.DeviceTypeViewSet)
+device_types_router.register(
+    r"snapshots",
+    views.DeviceTypeQueueSnapshotViewSet,
+    parents_query_lookups=["device_type__name"],
+    basename="devicetypes-snapshots",
+)
 jobs_router = router.register(r"jobs", views.TestJobViewSet)
 jobs_router.register(
     r"tests",

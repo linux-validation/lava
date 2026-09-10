@@ -30,6 +30,7 @@ from lava_scheduler_app.models import (
     Alias,
     Device,
     DeviceType,
+    DeviceTypeQueueSnapshot,
     GroupDevicePermission,
     GroupDeviceTypePermission,
     RemoteArtifactsAuth,
@@ -1088,6 +1089,137 @@ ok 2 bar
             self.adminclient, reverse("api-root", args=[self.version]) + "devicetypes/"
         )
         assert len(data["results"]) == 4  # nosec - unit test support
+
+    def _snapshot(self, device_type, minutes_ago, **kwargs):
+        fields = {
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "available_devices": 0,
+            "started_jobs": 0,
+            "finished_jobs": 0,
+        }
+        fields.update(kwargs)
+        return DeviceTypeQueueSnapshot.objects.create(
+            device_type=device_type,
+            timestamp=timezone.now() - timedelta(minutes=minutes_ago),
+            **fields,
+        )
+
+    def test_devicetype_statistics(self):
+        for minutes in (5, 10, 15):
+            self._snapshot(
+                self.public_device_type1,
+                minutes,
+                queued_jobs=2,
+                running_jobs=1,
+                available_devices=3,
+                started_jobs=2,
+                average_wait_time=timedelta(minutes=6),
+                finished_jobs=4,
+                average_duration=timedelta(minutes=9),
+            )
+
+        data = self.hit(
+            self.userclient,
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/statistics/" % self.public_device_type1.name,
+        )
+        assert data["device_type"] == "public_device_type1"  # nosec
+        assert data["snapshots"] == 3  # nosec
+        assert data["average_wait_time"] == "00:06:00"  # nosec
+        assert data["average_wait_jobs"] == 6  # nosec
+        assert data["average_duration"] == "00:09:00"  # nosec
+        assert data["average_duration_jobs"] == 12  # nosec
+        assert data["utilisation"] == 25.0  # nosec - 1 busy of 4 usable
+        # The live figures come from the most recent sample.
+        assert data["queued_jobs"] == 2  # nosec
+        assert data["running_jobs"] == 1  # nosec
+
+    def test_devicetype_statistics_without_samples(self):
+        data = self.hit(
+            self.userclient,
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/statistics/" % self.public_device_type1.name,
+        )
+        assert data["snapshots"] == 0  # nosec
+        assert data["average_wait_time"] is None  # nosec
+        assert data["average_duration"] is None  # nosec
+        assert data["utilisation"] is None  # nosec
+        assert data["last_sample"] is None  # nosec
+
+    def test_devicetype_statistics_days_window(self):
+        # Inside the default window but outside a one-day one.
+        self._snapshot(
+            self.public_device_type1,
+            60 * 24 * 3,
+            started_jobs=1,
+            average_wait_time=timedelta(minutes=30),
+        )
+        url = (
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/statistics/" % self.public_device_type1.name
+        )
+        assert self.hit(self.userclient, url)["snapshots"] == 1  # nosec
+        assert self.hit(self.userclient, url + "?days=1")["snapshots"] == 0  # nosec
+
+    def test_devicetype_statistics_rejects_a_bad_window(self):
+        url = (
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/statistics/" % self.public_device_type1.name
+        )
+        assert self.userclient.get(url + "?days=nope").status_code == 400  # nosec
+        assert self.userclient.get(url + "?days=0").status_code == 400  # nosec
+        assert (  # nosec
+            self.userclient.get(
+                url + "?days=%d" % (settings.QUEUE_SNAPSHOT_RETENTION_DAYS + 1)
+            ).status_code
+            == 400
+        )
+
+    def test_devicetype_statistics_restricted(self):
+        url = (
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/statistics/" % self.restricted_device_type1.name
+        )
+        assert self.anonymousclient.get(url).status_code == 404  # nosec
+        assert self.userclient.get(url).status_code == 404  # nosec
+        assert self.adminclient.get(url).status_code == 200  # nosec
+
+    def test_devicetype_snapshots_list(self):
+        for minutes in (5, 10, 15):
+            self._snapshot(self.public_device_type1, minutes, queued_jobs=minutes)
+        self._snapshot(self.restricted_device_type1, 5, queued_jobs=99)
+
+        data = self.hit(
+            self.userclient,
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/snapshots/" % self.public_device_type1.name,
+        )
+        assert len(data["results"]) == 3  # nosec
+        # Newest first, and scoped to this device type only.
+        assert [r["queued_jobs"] for r in data["results"]] == [5, 10, 15]  # nosec
+        assert {r["device_type"] for r in data["results"]} == {  # nosec
+            "public_device_type1"
+        }
+
+    def test_devicetype_snapshots_restricted(self):
+        self._snapshot(self.restricted_device_type1, 5)
+        url = (
+            reverse("api-root", args=[self.version])
+            + "devicetypes/%s/snapshots/" % self.restricted_device_type1.name
+        )
+        # 404 rather than 403, matching devicetypes/<name>/ so the nested
+        # route does not confirm a device type the parent hides.
+        assert self.anonymousclient.get(url).status_code == 404  # nosec
+        assert self.userclient.get(url).status_code == 404  # nosec
+        assert self.adminclient.get(url).status_code == 200  # nosec
+
+    def test_devicetype_snapshots_unknown_device_type(self):
+        url = (
+            reverse("api-root", args=[self.version])
+            + "devicetypes/does-not-exist/snapshots/"
+        )
+        assert self.userclient.get(url).status_code == 404  # nosec
 
     def test_devicetype_view(self):
         response = self.userclient.get(

@@ -101,12 +101,7 @@ from lava_scheduler_app.models import (
     TestJobUser,
     Worker,
 )
-from lava_scheduler_app.queue_stats import (
-    average_duration,
-    average_wait_time,
-    queue_history,
-    utilisation,
-)
+from lava_scheduler_app.queue_stats import queue_history, statistics
 from lava_scheduler_app.signals import send_event
 from lava_scheduler_app.tables import (
     DeviceHealthTable,
@@ -1035,9 +1030,7 @@ def device_type_detail(request, pk):
 
     # Queue length over time and average wait, from the scheduler's samples.
     stats_days = settings.QUEUE_STATS_WINDOW_DAYS
-    mean_wait, mean_wait_jobs = average_wait_time(dt, days=stats_days)
-    mean_duration, mean_duration_jobs = average_duration(dt, days=stats_days)
-    busy_percent = utilisation(dt, days=stats_days)
+    queue_statistics = statistics(dt, days=stats_days)
     snapshots = queue_history(dt, days=stats_days)
     queue_chart = {
         "queued": [[i, s["queued_jobs"]] for i, s in enumerate(snapshots)],
@@ -1064,11 +1057,11 @@ def device_type_detail(request, pk):
             "health_freq": health_freq_str,
             "invalid_template": invalid_template(dt),
             "queue_stats_days": stats_days,
-            "average_wait_time": mean_wait,
-            "average_wait_jobs": mean_wait_jobs,
-            "average_duration": mean_duration,
-            "average_duration_jobs": mean_duration_jobs,
-            "utilisation": busy_percent,
+            "average_wait_time": queue_statistics["average_wait_time"],
+            "average_wait_jobs": queue_statistics["average_wait_jobs"],
+            "average_duration": queue_statistics["average_duration"],
+            "average_duration_jobs": queue_statistics["average_duration_jobs"],
+            "utilisation": queue_statistics["utilisation"],
             "queue_chart": queue_chart,
             "queue_chart_empty": not snapshots,
         },

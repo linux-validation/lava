@@ -50,6 +50,7 @@ from lava_results_app.utils import (
     get_testcases_with_limit,
     testcase_export_fields,
 )
+from lava_scheduler_app import queue_stats
 from lava_scheduler_app.dbutils import testjob_submission
 from lava_scheduler_app.environment import DEVICES_JINJA_ENV
 from lava_scheduler_app.logutils import logs_instance
@@ -58,6 +59,7 @@ from lava_scheduler_app.models import (
     Device,
     DevicesUnavailableException,
     DeviceType,
+    DeviceTypeQueueSnapshot,
     GroupDevicePermission,
     GroupDeviceTypePermission,
     RemoteArtifactsAuth,
@@ -623,7 +625,54 @@ class TestCaseViewSet(NestedViewSetMixin, viewsets.ReadOnlyModelViewSet):
         return super().get_queryset()
 
 
+class DeviceTypeQueueSnapshotViewSet(NestedViewSetMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    The scheduler's raw queue samples for one device type, newest first.
+
+    One row per sample interval, carrying the queue depth at that instant
+    plus the wait and duration averages for the jobs that started and
+    finished since the previous sample. Filter with `timestamp__gte` and
+    `timestamp__lt` to narrow the window.
+    """
+
+    queryset = DeviceTypeQueueSnapshot.objects
+    serializer_class = serializers.DeviceTypeQueueSnapshotSerializer
+    filterset_class = filters.DeviceTypeQueueSnapshotFilter
+    ordering_fields = ("timestamp",)
+    ordering = ("-timestamp",)
+
+    def get_queryset(self):
+        name = self.kwargs["parent_lookup_device_type__name"]
+        try:
+            device_type = DeviceType.objects.get(name=name)
+        except DeviceType.DoesNotExist:
+            raise NotFound
+
+        # Not PermissionDenied: devicetypes/<name>/ already answers 404 for a
+        # device type the user cannot view, so a 403 here would confirm the
+        # existence of one its sibling endpoints deny.
+        if not device_type.can_view(self.request.user):
+            raise NotFound
+
+        return super().get_queryset()
+
+
 class DeviceTypeViewSet(viewsets.ModelViewSet):
+    """
+    List DeviceTypes visible to the current user.
+
+    Queue, wait and job duration statistics are available at:
+
+    * `/devicetypes/<name>/statistics/`
+
+    They cover `settings.QUEUE_STATS_WINDOW_DAYS` by default; pass
+    `?days=<n>` for a different window, up to the retention period.
+
+    The scheduler's raw samples behind those figures are available at:
+
+    * `/devicetypes/<name>/snapshots/`
+    """
+
     queryset = DeviceType.objects
     serializer_class = serializers.DeviceTypeSerializer
     filterset_fields = (
@@ -653,6 +702,37 @@ class DeviceTypeViewSet(viewsets.ModelViewSet):
         if self.action in ["create", "update", "destroy", "partial_update"]:
             self.permission_classes = [IsSuperUser]
         return super().get_permissions()
+
+    @action(detail=True, methods=["get"], suffix="statistics")
+    def statistics(self, request, **kwargs):
+        """
+        Aggregate queue, wait and duration statistics for this device type.
+
+        The window defaults to settings.QUEUE_STATS_WINDOW_DAYS and can be
+        overridden with `?days=<n>`. Averages are combined across the
+        scheduler's snapshots weighted by the jobs each one covers, so they
+        match what the device type page reports.
+        """
+        device_type = self.get_object()
+        if not device_type.can_view(request.user):
+            raise Http404("Device-type '%s' was not found." % device_type.name)
+
+        days = request.query_params.get("days", settings.QUEUE_STATS_WINDOW_DAYS)
+        try:
+            days = int(days)
+        except (TypeError, ValueError):
+            raise ParseError("'days' must be an integer.")
+        if days < 1 or days > settings.QUEUE_SNAPSHOT_RETENTION_DAYS:
+            raise ParseError(
+                "'days' must be between 1 and %d, the retention period."
+                % settings.QUEUE_SNAPSHOT_RETENTION_DAYS
+            )
+
+        return Response(
+            serializers.DeviceTypeQueueStatisticsSerializer(
+                queue_stats.statistics(device_type, days=days)
+            ).data
+        )
 
     @action(detail=True, methods=("get", "post"), suffix="health-check")
     def health_check(self, request, **kwargs):
