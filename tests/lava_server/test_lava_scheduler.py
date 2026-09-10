@@ -123,3 +123,83 @@ def test_handle(mocker):
         event_url="tcp://localhost:5500",
         ipv6=False,
     )
+
+
+@pytest.mark.django_db
+def test_first_snapshot_does_not_wait_for_uptime(mocker, settings):
+    """
+    time.monotonic() counts from boot, so a machine that has just started
+    reports a small value. The "never sampled yet" sentinel must not be a
+    real point on that clock, or the first samples are skipped until the
+    machine has been up for a whole interval.
+    """
+    settings.QUEUE_SNAPSHOT_INTERVAL = 300
+    record = mocker.patch(__name__ + ".lava_scheduler.record_snapshots", return_value=0)
+    prune = mocker.patch(__name__ + ".lava_scheduler.prune_snapshots", return_value=0)
+    mocker.patch.object(lava_scheduler.time, "monotonic", return_value=42.0)
+
+    cmd = Command()
+    cmd.logger = mocker.Mock()
+    cmd.record_queue_snapshots()
+
+    assert len(record.mock_calls) == 1
+    assert len(prune.mock_calls) == 1
+
+
+@pytest.mark.django_db
+def test_record_queue_snapshots_throttles_on_the_interval(mocker, settings):
+    settings.QUEUE_SNAPSHOT_INTERVAL = 300
+    record = mocker.patch(__name__ + ".lava_scheduler.record_snapshots", return_value=0)
+    mocker.patch(__name__ + ".lava_scheduler.prune_snapshots", return_value=0)
+
+    cmd = Command()
+    cmd.logger = mocker.Mock()
+
+    # First pass records; an immediate second pass is throttled out.
+    cmd.record_queue_snapshots()
+    cmd.record_queue_snapshots()
+    assert len(record.mock_calls) == 1
+
+    # Once the interval has elapsed it records again.
+    cmd.last_snapshot -= settings.QUEUE_SNAPSHOT_INTERVAL
+    cmd.record_queue_snapshots()
+    assert len(record.mock_calls) == 2
+
+
+@pytest.mark.django_db
+def test_record_queue_snapshots_disabled_by_a_zero_interval(mocker, settings):
+    settings.QUEUE_SNAPSHOT_INTERVAL = 0
+    record = mocker.patch(__name__ + ".lava_scheduler.record_snapshots", return_value=0)
+
+    cmd = Command()
+    cmd.logger = mocker.Mock()
+    cmd.record_queue_snapshots()
+
+    assert record.mock_calls == []
+
+
+@pytest.mark.django_db
+def test_prune_runs_on_its_own_slower_interval(mocker, settings):
+    settings.QUEUE_SNAPSHOT_INTERVAL = 300
+    settings.QUEUE_SNAPSHOT_PRUNE_INTERVAL = 24 * 3600
+    mocker.patch(__name__ + ".lava_scheduler.record_snapshots", return_value=0)
+    prune = mocker.patch(__name__ + ".lava_scheduler.prune_snapshots", return_value=0)
+
+    cmd = Command()
+    cmd.logger = mocker.Mock()
+
+    # Both fire on the first pass.
+    cmd.record_queue_snapshots()
+    assert len(prune.mock_calls) == 1
+
+    # Several snapshots later, the prune has not come round again.
+    for _ in range(3):
+        cmd.last_snapshot -= settings.QUEUE_SNAPSHOT_INTERVAL
+        cmd.record_queue_snapshots()
+    assert len(prune.mock_calls) == 1
+
+    # It does once its own, much longer, interval has elapsed.
+    cmd.last_snapshot -= settings.QUEUE_SNAPSHOT_INTERVAL
+    cmd.last_prune -= settings.QUEUE_SNAPSHOT_PRUNE_INTERVAL
+    cmd.record_queue_snapshots()
+    assert len(prune.mock_calls) == 2
