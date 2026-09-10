@@ -19,6 +19,7 @@ from django.utils import timezone
 
 from lava_common.version import __version__
 from lava_scheduler_app.models import Worker
+from lava_scheduler_app.queue_stats import prune_snapshots, record_snapshots
 from lava_scheduler_app.scheduler import LOGGER_NAME, schedule
 from lava_server.cmdutils import LAVADaemonCommand
 
@@ -36,6 +37,13 @@ FORMAT = "%(asctime)-15s %(levelname)7s %(message)s"
 class Command(LAVADaemonCommand):
     logger = None
     help = "LAVA scheduler"
+    # Throttles for the queue statistics sampling. None means "never done",
+    # so both fire on the first pass through the loop. It cannot be 0.0:
+    # that is a real point on the monotonic clock, which starts at boot, so
+    # a machine whose uptime is below the interval would compare as "done
+    # recently" and skip its first samples.
+    last_snapshot: float | None = None
+    last_prune: float | None = None
     default_logfile = "/var/log/lava-server/lava-scheduler.log"
 
     def add_arguments(self, parser):
@@ -145,6 +153,28 @@ class Command(LAVADaemonCommand):
 
         return should_schedule
 
+    def record_queue_snapshots(self) -> None:
+        """Sample the per-device-type queue, at most every QUEUE_SNAPSHOT_INTERVAL."""
+        now = time.monotonic()
+        interval = settings.QUEUE_SNAPSHOT_INTERVAL
+        if not interval:
+            return
+        if self.last_snapshot is not None and now - self.last_snapshot < interval:
+            return
+        self.last_snapshot = now
+        # record_snapshots() derives its own window from the last snapshot
+        # in the database, so a restart here does not skew the averages.
+        count = record_snapshots()
+        self.logger.debug("Recorded queue snapshots for %d device types", count)
+
+        if (
+            self.last_prune is None
+            or now - self.last_prune >= settings.QUEUE_SNAPSHOT_PRUNE_INTERVAL
+        ):
+            self.last_prune = now
+            deleted = prune_snapshots()
+            self.logger.info("Pruned %d expired queue snapshots", deleted)
+
     def main_loop(self) -> None:
         while True:
             begin = time.monotonic()
@@ -155,6 +185,9 @@ class Command(LAVADaemonCommand):
 
                 # Schedule jobs
                 schedule(workers)
+
+                # Sample the queue for the device type statistics
+                self.record_queue_snapshots()
 
                 # Wait for events
                 should_schedule = False
