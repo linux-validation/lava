@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("lava_scheduler_app", "0070_increase_tag_name_max_length"),
+        ("lava_scheduler_app", "0070_worker_capacity_stats"),
     ]
 
     operations = [
