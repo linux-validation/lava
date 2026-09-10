@@ -100,3 +100,25 @@ def sort_items(items):
 @register.filter()
 def replace_python_unicode(data):
     return data.replace("!!python/unicode ", "")
+
+
+@register.filter()
+def duration(value):
+    """
+    Render a timedelta compactly: "2h 05m", "5m 29s", "12s".
+
+    str(timedelta) keeps microseconds, which is noise for a wait time
+    averaged over hundreds of jobs.
+    """
+    if value is None:
+        return ""
+    seconds = int(value.total_seconds())
+    if seconds < 0:
+        return ""
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return "%dh %02dm" % (hours, minutes)
+    if minutes:
+        return "%dm %02ds" % (minutes, seconds)
+    return "%ds" % seconds

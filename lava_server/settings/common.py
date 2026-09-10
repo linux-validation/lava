@@ -250,6 +250,20 @@ QUEUE_TIMEOUT_HOURS = None
 # Default health frequency in hours
 HEALTH_FREQUENCY_HOURS = 24
 
+# How often the scheduler samples the per-device-type queue, in seconds.
+QUEUE_SNAPSHOT_INTERVAL = 300
+
+# How long those samples are kept, in days.
+QUEUE_SNAPSHOT_RETENTION_DAYS = 90
+
+# How often expired samples are swept, in seconds. This only controls how
+# promptly the delete runs, not what is kept: that is the retention above.
+QUEUE_SNAPSHOT_PRUNE_INTERVAL = 24 * 3600
+
+# Window used for the queue chart and average wait time on the device type
+# page, in days.
+QUEUE_STATS_WINDOW_DAYS = 7
+
 # Default length value for all tables
 DEFAULT_TABLE_LENGTH = 25
 

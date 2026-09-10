@@ -101,6 +101,12 @@ from lava_scheduler_app.models import (
     TestJobUser,
     Worker,
 )
+from lava_scheduler_app.queue_stats import (
+    average_duration,
+    average_wait_time,
+    queue_history,
+    utilisation,
+)
 from lava_scheduler_app.signals import send_event
 from lava_scheduler_app.tables import (
     DeviceHealthTable,
@@ -799,6 +805,23 @@ def all_device_types(request):
     )
 
 
+def _queue_chart_ticks(snapshots, count=7):
+    """
+    Evenly spaced x axis labels for the queue chart.
+
+    The samples are plotted against their index rather than their timestamp:
+    flot only understands a time axis with the time plugin, which this
+    instance does not ship.
+    """
+    if not snapshots:
+        return []
+    step = max(len(snapshots) // count, 1)
+    return [
+        [i, snapshots[i]["timestamp"].strftime("%m-%d %H:%M")]
+        for i in range(0, len(snapshots), step)
+    ]
+
+
 @BreadCrumb("{pk}", parent=all_device_types, needs=["pk"])
 def device_type_detail(request, pk):
     try:
@@ -1010,6 +1033,19 @@ def device_type_detail(request, pk):
     else:
         health_freq_str = "one every %d hours" % dt.health_frequency
 
+    # Queue length over time and average wait, from the scheduler's samples.
+    stats_days = settings.QUEUE_STATS_WINDOW_DAYS
+    mean_wait, mean_wait_jobs = average_wait_time(dt, days=stats_days)
+    mean_duration, mean_duration_jobs = average_duration(dt, days=stats_days)
+    busy_percent = utilisation(dt, days=stats_days)
+    snapshots = queue_history(dt, days=stats_days)
+    queue_chart = {
+        "queued": [[i, s["queued_jobs"]] for i, s in enumerate(snapshots)],
+        "available": [[i, s["available_devices"]] for i, s in enumerate(snapshots)],
+        "running": [[i, s["running_jobs"]] for i, s in enumerate(snapshots)],
+        "ticks": _queue_chart_ticks(snapshots),
+    }
+
     return render(
         request,
         "lava_scheduler_app/device_type.html",
@@ -1027,6 +1063,14 @@ def device_type_detail(request, pk):
             "context_help": BreadCrumbTrail.leading_to(device_type_detail, pk="help"),
             "health_freq": health_freq_str,
             "invalid_template": invalid_template(dt),
+            "queue_stats_days": stats_days,
+            "average_wait_time": mean_wait,
+            "average_wait_jobs": mean_wait_jobs,
+            "average_duration": mean_duration,
+            "average_duration_jobs": mean_duration_jobs,
+            "utilisation": busy_percent,
+            "queue_chart": queue_chart,
+            "queue_chart_empty": not snapshots,
         },
     )
 

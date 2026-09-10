@@ -362,6 +362,80 @@ class DeviceType(RestrictedObject):
         super().save(*args, **kwargs)
 
 
+class DeviceTypeQueueSnapshot(models.Model):
+    """
+    A periodic sample of the job queue for one device type.
+
+    Queue length is an instantaneous quantity: a job contributes to it only
+    between its submit_time and its start_time. Recomputing a history of it
+    at render time means scanning every job in the window, so the scheduler
+    appends one row per device type every
+    settings.QUEUE_SNAPSHOT_INTERVAL seconds instead.
+
+    average_wait_time is the mean of (start_time - submit_time) over the
+    jobs that *started* since the previous snapshot, and average_duration
+    the mean of (end_time - start_time) over the jobs that *finished* in
+    it. Both are stored beside the count they average over, so that
+    averaging a range of rows (weighted by that count) gives the true
+    average over the range.
+    """
+
+    class Meta:
+        indexes = (models.Index(fields=("device_type", "-timestamp")),)
+        get_latest_by = "timestamp"
+
+    device_type = models.ForeignKey(
+        DeviceType, related_name="queue_snapshots", on_delete=models.CASCADE
+    )
+
+    timestamp = models.DateTimeField(db_index=True)
+
+    queued_jobs = models.PositiveIntegerField(
+        default=0, help_text="Jobs waiting for a device of this type."
+    )
+
+    running_jobs = models.PositiveIntegerField(
+        default=0, help_text="Jobs reserved for or running on this device type."
+    )
+
+    available_devices = models.PositiveIntegerField(
+        default=0, help_text="Idle, healthy devices on an online worker."
+    )
+
+    started_jobs = models.PositiveIntegerField(
+        default=0,
+        help_text="Jobs that started since the previous snapshot. This is the "
+        "population average_wait_time is computed over.",
+    )
+
+    average_wait_time = models.DurationField(
+        null=True,
+        blank=True,
+        help_text="Mean time between submission and start for the jobs "
+        "counted in started_jobs. NULL when none started.",
+    )
+
+    finished_jobs = models.PositiveIntegerField(
+        default=0,
+        help_text="Jobs that finished since the previous snapshot. This is the "
+        "population average_duration is computed over.",
+    )
+
+    average_duration = models.DurationField(
+        null=True,
+        blank=True,
+        help_text="Mean time a device was occupied (start to end) by the jobs "
+        "counted in finished_jobs. NULL when none finished.",
+    )
+
+    def __str__(self):
+        return "%s queue at %s: %d" % (
+            self.device_type_id,
+            self.timestamp,
+            self.queued_jobs,
+        )
+
+
 class Worker(RestrictedObject):
     """
     A worker node to which devices are attached.

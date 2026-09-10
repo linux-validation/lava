@@ -39,6 +39,12 @@
       <dd><span class="label label-{% if queued_jobs_count > available_devices_count %}danger{% elif queued_jobs_count > 0 %}warning{{ queued_jobs_count }}{% else %}default{% endif %}">{{ queued_jobs_count }}</span></dd>
       <dt>Running</dt>
       <dd>{{ running_devices_count }}</dd>
+      <dt>Average wait</dt>
+      <dd>{% if average_wait_time %}{{ average_wait_time|duration }} <small class="text-muted">({{ average_wait_jobs }} job{{ average_wait_jobs|pluralize }}, {{ queue_stats_days }}d)</small>{% else %}<i>no data</i>{% endif %}</dd>
+      <dt>Average job</dt>
+      <dd>{% if average_duration %}{{ average_duration|duration }} <small class="text-muted">({{ average_duration_jobs }} job{{ average_duration_jobs|pluralize }}, {{ queue_stats_days }}d)</small>{% else %}<i>no data</i>{% endif %}</dd>
+      <dt>Utilisation</dt>
+      <dd>{% if utilisation != None %}<span class="label label-{% if utilisation >= 80 %}danger{% elif utilisation >= 50 %}warning{% else %}default{% endif %}">{{ utilisation|floatformat:1 }}%</span> <small class="text-muted">of usable devices busy, {{ queue_stats_days }}d</small>{% else %}<i>no data</i>{% endif %}</dd>
     </dl>
   </div>
   <div class="col-md-4">
@@ -100,6 +106,15 @@
   </div>
 </div>
 
+<h4 class="modal-header">Queue length over the last {{ queue_stats_days }} days</h4>
+{% if queue_chart_empty %}
+<p class="text-muted">No queue samples recorded yet. The scheduler records them every few minutes.</p>
+{% else %}
+<div id="queue-chart" style="height: 250px;"></div>
+<div id="queue-chart-legend" class="text-center"></div>
+{% endif %}
+{{ queue_chart|json_script:"queue-chart-data" }}
+
 <h4 class="modal-header">Devices list</h4>
 {% render_table devices_table %}
 
@@ -113,4 +128,23 @@
 
 {% block scripts %}
 <script src="{% static "lava_scheduler_app/js/tables.js" %}"></script>
+{% if not queue_chart_empty %}
+<script src="{% static "lava_scheduler_app/js/jquery.flot.js" %}"></script>
+<script>
+  $(function() {
+    var chart = JSON.parse($("#queue-chart-data").text());
+    $.plot($("#queue-chart"), [
+      {label: "Queued jobs", data: chart.queued, color: "#d9534f"},
+      {label: "Running jobs", data: chart.running, color: "#f0ad4e"},
+      {label: "Available devices", data: chart.available, color: "#5cb85c"}
+    ], {
+      series: {lines: {show: true, lineWidth: 1.5}, shadowSize: 0},
+      xaxis: {ticks: chart.ticks},
+      yaxis: {min: 0, tickDecimals: 0},
+      grid: {borderWidth: 1, borderColor: "#ddd", hoverable: true},
+      legend: {container: $("#queue-chart-legend"), noColumns: 3}
+    });
+  });
+</script>
+{% endif %}
 {% endblock %}
