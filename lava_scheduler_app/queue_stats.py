@@ -237,6 +237,36 @@ def utilisation(device_type, days: int = 7):
     return busy / usable * 100
 
 
+def statistics(device_type, days: int = 7) -> dict:
+    """
+    Everything the device type page and the REST API report, in one dict.
+
+    Keeping the aggregation here means the HTML view and the API cannot
+    drift apart on how a window is bounded or an average is weighted.
+    """
+    since = timezone.now() - datetime.timedelta(days=days)
+    wait, wait_jobs = average_wait_time(device_type, days=days)
+    duration, duration_jobs = average_duration(device_type, days=days)
+    latest = current_queue(device_type)
+
+    return {
+        "device_type": device_type.name,
+        "days": days,
+        "snapshots": DeviceTypeQueueSnapshot.objects.filter(
+            device_type=device_type, timestamp__gte=since
+        ).count(),
+        "average_wait_time": wait,
+        "average_wait_jobs": wait_jobs,
+        "average_duration": duration,
+        "average_duration_jobs": duration_jobs,
+        "utilisation": utilisation(device_type, days=days),
+        "queued_jobs": latest.queued_jobs if latest else None,
+        "running_jobs": latest.running_jobs if latest else None,
+        "available_devices": latest.available_devices if latest else None,
+        "last_sample": latest.timestamp if latest else None,
+    }
+
+
 def current_queue(device_type):
     """The most recent snapshot for a device type, or None."""
     return (

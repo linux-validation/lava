@@ -24,6 +24,7 @@ from lava_scheduler_app.models import (
     Core,
     Device,
     DeviceType,
+    DeviceTypeQueueSnapshot,
     GroupDevicePermission,
     GroupDeviceTypePermission,
     JobFailureTag,
@@ -708,3 +709,20 @@ class GroupDevicePermissionFilter(filters.FilterSet):
     class Meta:
         model = GroupDevicePermission
         exclude = {}
+
+
+class DeviceTypeQueueSnapshotFilter(filters.FilterSet):
+    device_type = RelatedFilter(
+        DeviceTypeFilter,
+        field_name="device_type",
+        queryset=DeviceType.objects.all(),
+    )
+
+    class Meta:
+        model = DeviceTypeQueueSnapshot
+        fields = {
+            "timestamp": ["exact", "lt", "lte", "gt", "gte"],
+            "queued_jobs": ["exact", "lt", "gt"],
+            "running_jobs": ["exact", "lt", "gt"],
+            "available_devices": ["exact", "lt", "gt"],
+        }

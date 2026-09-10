@@ -16,6 +16,7 @@ from lava_scheduler_app.models import (
     Alias,
     Device,
     DeviceType,
+    DeviceTypeQueueSnapshot,
     GroupDevicePermission,
     GroupDeviceTypePermission,
     RemoteArtifactsAuth,
@@ -391,3 +392,42 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
             instance.save(update_fields=["password"])
         return instance
+
+
+class DeviceTypeQueueSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceTypeQueueSnapshot
+        fields = (
+            "device_type",
+            "timestamp",
+            "queued_jobs",
+            "running_jobs",
+            "available_devices",
+            "started_jobs",
+            "average_wait_time",
+            "finished_jobs",
+            "average_duration",
+        )
+        read_only_fields = fields
+
+
+class DeviceTypeQueueStatisticsSerializer(serializers.Serializer):
+    """
+    Aggregate queue statistics for one device type over a window.
+
+    Not backed by a model: the averages are combined across snapshots,
+    weighted by the job counts each one covers.
+    """
+
+    device_type = serializers.CharField(read_only=True)
+    days = serializers.IntegerField(read_only=True)
+    snapshots = serializers.IntegerField(read_only=True)
+    average_wait_time = serializers.DurationField(read_only=True)
+    average_wait_jobs = serializers.IntegerField(read_only=True)
+    average_duration = serializers.DurationField(read_only=True)
+    average_duration_jobs = serializers.IntegerField(read_only=True)
+    utilisation = serializers.FloatField(read_only=True)
+    queued_jobs = serializers.IntegerField(read_only=True)
+    running_jobs = serializers.IntegerField(read_only=True)
+    available_devices = serializers.IntegerField(read_only=True)
+    last_sample = serializers.DateTimeField(read_only=True)
