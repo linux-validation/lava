@@ -101,7 +101,11 @@ from lava_scheduler_app.models import (
     TestJobUser,
     Worker,
 )
-from lava_scheduler_app.queue_stats import queue_history, statistics
+from lava_scheduler_app.queue_stats import (
+    annotate_statistics,
+    queue_history,
+    statistics,
+)
 from lava_scheduler_app.signals import send_event
 from lava_scheduler_app.tables import (
     DeviceHealthTable,
@@ -746,7 +750,7 @@ class DeviceHealthView(DeviceTableView):
 
 class DeviceTypeOverView(JobTableView):
     def get_queryset(self):
-        return device_type_summary(self.request.user).annotate(
+        queryset = device_type_summary(self.request.user).annotate(
             queued_jobs=Subquery(
                 TestJob.objects.filter(
                     Q(state=TestJob.STATE_SUBMITTED),
@@ -759,6 +763,7 @@ class DeviceTypeOverView(JobTableView):
                 output_field=IntegerField(),
             )
         )
+        return annotate_statistics(queryset, days=settings.QUEUE_STATS_WINDOW_DAYS)
 
 
 class DTDeviceView(DeviceTableView):
@@ -795,6 +800,7 @@ def all_device_types(request):
         "lava_scheduler_app/alldevice_types.html",
         {
             "dt_table": ptable,
+            "queue_stats_days": settings.QUEUE_STATS_WINDOW_DAYS,
             "bread_crumb_trail": BreadCrumbTrail.leading_to(all_device_types),
         },
     )

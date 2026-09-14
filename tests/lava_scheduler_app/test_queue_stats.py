@@ -8,6 +8,7 @@ from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from lava_scheduler_app.models import (
@@ -24,6 +25,7 @@ from lava_scheduler_app.queue_stats import (
     prune_snapshots,
     queue_history,
     record_snapshots,
+    statistics,
     utilisation,
 )
 
@@ -324,6 +326,107 @@ class TestDeviceTypeQueueUI(QueueStatsTestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.context["queue_chart"]["queued"], [])
         self.assertTrue(response.context["queue_chart_empty"])
+
+
+class TestDeviceTypesTableStats(QueueStatsTestCase):
+    def setUp(self):
+        super().setUp()
+        self.arndale = DeviceType.objects.create(name="arndale")
+        for hostname, device_type in (
+            ("beagle01", self.beagle),
+            ("arndale01", self.arndale),
+        ):
+            Device.objects.create(
+                hostname=hostname,
+                device_type=device_type,
+                worker_host=self.worker,
+                state=Device.STATE_IDLE,
+                health=Device.HEALTH_GOOD,
+            )
+        self.client.force_login(self.user)
+
+        now = timezone.now()
+        # panda: wait weighted to 6.9 minutes, duration to 20 minutes,
+        # 4 busy of 6 usable.
+        DeviceTypeQueueSnapshot.objects.create(
+            device_type=self.panda,
+            timestamp=now - timedelta(minutes=10),
+            running_jobs=1,
+            available_devices=1,
+            started_jobs=1,
+            average_wait_time=timedelta(minutes=60),
+            finished_jobs=2,
+            average_duration=timedelta(minutes=30),
+        )
+        DeviceTypeQueueSnapshot.objects.create(
+            device_type=self.panda,
+            timestamp=now - timedelta(minutes=5),
+            running_jobs=3,
+            available_devices=1,
+            started_jobs=9,
+            average_wait_time=timedelta(minutes=1),
+            finished_jobs=2,
+            average_duration=timedelta(minutes=10),
+        )
+        # Outside the window.
+        DeviceTypeQueueSnapshot.objects.create(
+            device_type=self.panda,
+            timestamp=now - timedelta(days=9),
+            running_jobs=50,
+            started_jobs=50,
+            average_wait_time=timedelta(hours=10),
+        )
+        # beagle: 1 busy of 4 usable, nothing started or finished.
+        DeviceTypeQueueSnapshot.objects.create(
+            device_type=self.beagle,
+            timestamp=now - timedelta(minutes=5),
+            running_jobs=1,
+            available_devices=3,
+        )
+        # arndale has no snapshots at all.
+
+    def _table(self, **params):
+        response = self.client.get(reverse("lava.scheduler.device_types"), params)
+        self.assertEqual(response.status_code, 200)
+        return response, response.context["dt_table"]
+
+    @override_settings(QUEUE_STATS_WINDOW_DAYS=7)
+    def test_table_matches_the_device_type_page(self):
+        response, table = self._table()
+        rows = {row["device_type"]: row for row in table.data}
+
+        panda = statistics(self.panda, days=7)
+        self.assertEqual(rows["panda"]["average_wait_time"], timedelta(minutes=6.9))
+        self.assertEqual(rows["panda"]["average_wait_time"], panda["average_wait_time"])
+        self.assertEqual(rows["panda"]["average_duration"], panda["average_duration"])
+        self.assertAlmostEqual(rows["panda"]["utilisation"], panda["utilisation"])
+        self.assertAlmostEqual(rows["panda"]["utilisation"], 400 / 6)
+
+        self.assertIsNone(rows["beagle"]["average_wait_time"])
+        self.assertIsNone(rows["beagle"]["average_duration"])
+        self.assertAlmostEqual(rows["beagle"]["utilisation"], 25.0)
+
+        self.assertIsNone(rows["arndale"]["average_wait_time"])
+        self.assertIsNone(rows["arndale"]["average_duration"])
+        self.assertIsNone(rows["arndale"]["utilisation"])
+
+        self.assertContains(response, "6m 54s")
+        self.assertContains(response, "20m 00s")
+        self.assertContains(response, "66.7%")
+        self.assertContains(response, "25.0%")
+        self.assertContains(response, "over the last 7 days")
+
+    def test_sorting_keeps_device_types_without_data_last(self):
+        for sort, expected in (
+            ("utilisation", ["beagle", "panda", "arndale"]),
+            ("-utilisation", ["panda", "beagle", "arndale"]),
+            # Only panda has a wait; the rest tie and fall back to name order.
+            ("average_wait_time", ["panda", "arndale", "beagle"]),
+            ("-average_wait_time", ["panda", "arndale", "beagle"]),
+        ):
+            _, table = self._table(sort=sort)
+            names = [row["device_type"] for row in table.data]
+            self.assertEqual(names, expected, sort)
 
 
 class TestDurationFilter(TestCase):
