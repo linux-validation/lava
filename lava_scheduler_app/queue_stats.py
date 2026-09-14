@@ -16,7 +16,20 @@ from __future__ import annotations
 import datetime
 
 from django.conf import settings
-from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Max
+from django.db.models import (
+    Avg,
+    Count,
+    DurationField,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    Max,
+    OuterRef,
+    Subquery,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Cast, NullIf
 from django.utils import timezone
 
 from lava_scheduler_app.models import (
@@ -265,6 +278,60 @@ def statistics(device_type, days: int = 7) -> dict:
         "available_devices": latest.available_devices if latest else None,
         "last_sample": latest.timestamp if latest else None,
     }
+
+
+def annotate_statistics(queryset, days: int = 7, device_type_ref="device_type"):
+    """
+    Annotate average_wait_time, average_duration and utilisation onto rows
+    keyed by device type.
+
+    The same aggregation as statistics(), weighted the same way, but done
+    in SQL as subqueries: a table of every device type then costs a single
+    query, and can be sorted on the figures.
+    """
+    since = timezone.now() - datetime.timedelta(days=days)
+
+    def snapshots(**filters):
+        return (
+            DeviceTypeQueueSnapshot.objects.filter(
+                device_type=OuterRef(device_type_ref), timestamp__gte=since, **filters
+            )
+            .annotate(dummy_group_by=Value(1))  # Disable GROUP BY
+            .values("dummy_group_by")
+        )
+
+    def weighted_average(count_field, average_field):
+        total = ExpressionWrapper(
+            F(count_field) * F(average_field), output_field=DurationField()
+        )
+        return Subquery(
+            snapshots(**{f"{count_field}__gt": 0, f"{average_field}__isnull": False})
+            .annotate(
+                average=ExpressionWrapper(
+                    Sum(total) / Sum(count_field), output_field=DurationField()
+                )
+            )
+            .values("average"),
+            output_field=DurationField(),
+        )
+
+    return queryset.annotate(
+        average_wait_time=weighted_average("started_jobs", "average_wait_time"),
+        average_duration=weighted_average("finished_jobs", "average_duration"),
+        utilisation=Subquery(
+            snapshots()
+            .annotate(
+                utilisation=ExpressionWrapper(
+                    Cast(Sum("running_jobs"), FloatField())
+                    * 100
+                    / NullIf(Sum(F("running_jobs") + F("available_devices")), 0),
+                    output_field=FloatField(),
+                )
+            )
+            .values("utilisation"),
+            output_field=FloatField(),
+        ),
+    )
 
 
 def current_queue(device_type):
