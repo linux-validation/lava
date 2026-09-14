@@ -10,6 +10,7 @@ import django_tables2 as tables
 from django.conf import settings
 from django.contrib.admin.models import LogEntry
 from django.contrib.humanize.templatetags.humanize import naturaltime
+from django.db.models import F
 from django.db.models.functions import Lower
 from django.template.defaultfilters import filesizeformat, floatformat
 from django.utils.html import format_html, strip_tags
@@ -17,6 +18,7 @@ from django.utils.safestring import mark_safe
 from django.utils.timesince import timesince
 
 from lava_scheduler_app.models import Device, DeviceType, TestJob, Worker
+from lava_scheduler_app.templatetags.utils import duration
 from lava_server.lavatable import LavaTable
 
 # The query_set is based in the view, so split that into a View class
@@ -219,6 +221,41 @@ class DeviceTypeOverviewTable(LavaTable):
     offline = tables.Column(default="", empty_values=(0,))
     busy = tables.Column(default="", empty_values=(0,))
     queued_jobs = tables.Column(verbose_name="Queue", default="", empty_values=(0,))
+    average_wait_time = tables.Column(verbose_name="Avg wait", default="")
+    average_duration = tables.Column(verbose_name="Avg job", default="")
+    utilisation = tables.Column(verbose_name="Utilisation", default="")
+
+    def render_average_wait_time(self, value):
+        return duration(value)
+
+    def render_average_duration(self, value):
+        return duration(value)
+
+    def render_utilisation(self, value):
+        if value >= 80:
+            label = "danger"
+        elif value >= 50:
+            label = "warning"
+        else:
+            label = "default"
+        return format_html(
+            '<span class="label label-{}">{}%</span>', label, f"{value:.1f}"
+        )
+
+    # Device types without samples have no figures: keep them at the bottom
+    # whichever way the column is sorted.
+    def _order_nulls_last(self, queryset, field, is_descending):
+        order = F(field).desc if is_descending else F(field).asc
+        return queryset.order_by(order(nulls_last=True), "device_type"), True
+
+    def order_average_wait_time(self, queryset, is_descending):
+        return self._order_nulls_last(queryset, "average_wait_time", is_descending)
+
+    def order_average_duration(self, queryset, is_descending):
+        return self._order_nulls_last(queryset, "average_duration", is_descending)
+
+    def order_utilisation(self, queryset, is_descending):
+        return self._order_nulls_last(queryset, "utilisation", is_descending)
 
     class Meta(LavaTable.Meta):
         model = Device
