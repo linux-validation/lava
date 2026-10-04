@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from lava_common.constants import RAMDUMP_TIMEOUT
 from lava_common.exceptions import ConfigurationError, JobError
 from lava_dispatcher.action import Action, Pipeline
-from lava_dispatcher.connections.serial import ConnectDevice
 from lava_dispatcher.logical import RetryAction
 from lava_dispatcher.power import ResetDevice
 from lava_dispatcher.utils.compression import compress_file, create_tarfile
@@ -50,7 +49,9 @@ class BootQDLRetry(RetryAction):
 
     def populate(self, parameters):
         self.pipeline = Pipeline(parent=self, job=self.job, parameters=parameters)
-        self.pipeline.add_action(ConnectDevice(self.job))
+        # No console connection: this only flashes the board, and a connection
+        # opened here goes unread until the next boot, which then logs the
+        # power-on and EDL boot output as its own.
         self.pipeline.add_action(ResetDevice(self.job))
         self.pipeline.add_action(EnterQDL(self.job))
         self.pipeline.add_action(WaitQDLDeviceAction(self.job))
