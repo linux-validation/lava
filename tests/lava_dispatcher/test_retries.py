@@ -433,3 +433,50 @@ class TestFinalizeAction(TestRetriesAndFailuresBase):
 
         self.assertTrue(job.started)
         self.assertTrue(finalize_action.ran)
+
+    def run_job_with_power_off_hook(self, fail: bool, hook_error: bool = False):
+        root_pipeline, job = self.create_job_and_root_pipeline()
+        events: list[str] = []
+
+        class BeforePowerOffAction(RaisesErrorAction):
+            def before_power_off(self) -> bool:
+                events.append("before_power_off")
+                if hook_error:
+                    raise RuntimeError("hook failed")
+                return True
+
+        root_pipeline.add_action(
+            BeforePowerOffAction(job, retries_to_success=100 if fail else 0)
+        )
+        root_pipeline.add_action(FinalizeAction(job))
+
+        def power_off(action, connection, max_end_time):
+            events.append("power_off")
+            return connection
+
+        with patch("lava_dispatcher.power.PowerOff.run", power_off):
+            if fail:
+                with self.assertRaises(RaisesErrorException):
+                    job.run()
+            else:
+                job.run()
+        return events
+
+    def test_before_power_off_on_success(self) -> None:
+        # The board must still have power when actions get their last look.
+        self.assertEqual(
+            ["before_power_off", "power_off"],
+            self.run_job_with_power_off_hook(fail=False),
+        )
+
+    def test_before_power_off_on_failure(self) -> None:
+        self.assertEqual(
+            ["before_power_off", "power_off"],
+            self.run_job_with_power_off_hook(fail=True),
+        )
+
+    def test_before_power_off_error_still_powers_off(self) -> None:
+        self.assertEqual(
+            ["before_power_off", "power_off"],
+            self.run_job_with_power_off_hook(fail=False, hook_error=True),
+        )
