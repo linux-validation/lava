@@ -51,6 +51,10 @@ CLEANUP_TIMEOUT = 5 * 60
 # routinely exceeds CLEANUP_TIMEOUT, so the capture runs under its own window
 # (overridable per-job via the 'ramdump_timeout' boot parameter).
 RAMDUMP_TIMEOUT = 15 * 60
+# How long, in seconds, to keep looking for a board in EDL crashdump mode
+# before deciding it did not crash. A board that has only just crashed needs a
+# moment to re-enumerate on USB.
+RAMDUMP_SETTLE_TIME = 5
 
 # mount point for download directory when postprocessing images (e.g. within
 # docker containers)

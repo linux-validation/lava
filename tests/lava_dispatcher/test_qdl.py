@@ -6,7 +6,7 @@
 
 from unittest.mock import patch
 
-from lava_common.constants import RAMDUMP_TIMEOUT
+from lava_common.constants import RAMDUMP_SETTLE_TIME, RAMDUMP_TIMEOUT
 from lava_common.exceptions import ConfigurationError, JobError
 from lava_dispatcher.actions.boot.qdl import FlashQDLAction, QDLRamdumpAction
 from lava_dispatcher.actions.deploy.apply_overlay import AppendOverlays
@@ -263,6 +263,7 @@ class TestQDLRamdump(LavaDispatcherTestCase):
                 "lava_dispatcher.actions.boot.qdl.usb_device_present",
                 side_effect=present,
             ),
+            patch("lava_dispatcher.actions.boot.qdl.time.sleep"),
             patch("lava_dispatcher.actions.boot.qdl.which", return_value="/foo/qdl"),
             patch("lava_dispatcher.actions.boot.qdl.create_tarfile"),
             patch(
@@ -281,7 +282,7 @@ class TestQDLRamdump(LavaDispatcherTestCase):
                 else patch.object(action.job, "rearm_cleanup_timeout")
             ),
         ):
-            action._capture_if_crashed()
+            action.cleanup(connection=None)
         return results
 
     def capture_one(self, action, publish_output=""):
@@ -361,9 +362,13 @@ class TestQDLRamdump(LavaDispatcherTestCase):
 
     def test_detection_is_scoped_to_this_board(self):
         action = self.create_ramdump_action({"ramdump_publish_command": "/bin/true"})
-        with patch(
-            "lava_dispatcher.actions.boot.qdl.usb_device_present", return_value=None
-        ) as present:
+        with (
+            patch(
+                "lava_dispatcher.actions.boot.qdl.usb_device_present",
+                return_value=None,
+            ) as present,
+            patch("lava_dispatcher.actions.boot.qdl.time.sleep"),
+        ):
             action._capture_if_crashed()
         # The serial must be part of the query, not checked afterwards.
         self.assertEqual("abcdef12", present.call_args.kwargs["serial"])
@@ -373,13 +378,11 @@ class TestQDLRamdump(LavaDispatcherTestCase):
         # not, so there is nothing to capture and no result to record.
         action = self.create_ramdump_action({"ramdump_publish_command": "/bin/true"})
         self.assertEqual([], self.capture(action, crashed=("AAAAAAAA", "BBBBBBBB")))
-        self.assertFalse(getattr(action.job, action.JOB_GUARD, False))
 
     def test_our_board_among_several_in_crashdump(self):
         action = self.create_ramdump_action({"ramdump_publish_command": "/bin/true"})
         (result,) = self.capture(action, crashed=("AAAAAAAA", "abcdef12"))
         self.assertEqual("pass", result["result"])
-        self.assertTrue(getattr(action.job, action.JOB_GUARD, False))
 
     def test_board_without_a_qdl_id_is_skipped(self):
         # Without a serial the board cannot be told apart from the others on
@@ -418,14 +421,70 @@ class TestQDLRamdump(LavaDispatcherTestCase):
         self.assertEqual(1, len(results))
         self.assertEqual("2.6", results[0]["level"])
 
-    def test_ramdump_only_runs_at_cleanup(self):
+    def test_ramdump_only_runs_at_teardown(self):
         # Checking during run() as well would dump from the first qdl boot
         # action, before the board has had the rest of the job to crash.
         self.assertNotIn("run", QDLRamdumpAction.__dict__)
         action = self.create_ramdump_action()
         with patch.object(action, "_capture_if_crashed") as capture:
             action.cleanup(connection=None)
-        capture.assert_called_once_with()
+        capture.assert_called_once_with(in_cleanup=True)
+
+    def test_board_is_only_looked_for_once(self):
+        # Finalize looks before its power-off. By the time cleanup() runs the
+        # board is off, so looking again would only waste the settle time.
+        action = self.create_ramdump_action({"ramdump_publish_command": "/bin/true"})
+        with (
+            patch(
+                "lava_dispatcher.actions.boot.qdl.usb_device_present",
+                return_value=None,
+            ) as present,
+            patch("lava_dispatcher.actions.boot.qdl.time.sleep"),
+        ):
+            self.assertFalse(action.before_power_off())
+            looked = present.call_count
+            action.cleanup(connection=None)
+        self.assertEqual(RAMDUMP_SETTLE_TIME + 1, looked)
+        self.assertEqual(looked, present.call_count)
+
+    def test_waits_for_the_board_to_enumerate(self):
+        # A board that crashed a moment ago is not on USB yet.
+        action = self.create_ramdump_action({"ramdump_publish_command": "/bin/true"})
+        with (
+            patch(
+                "lava_dispatcher.actions.boot.qdl.usb_device_present",
+                side_effect=[None, None, "900e"],
+            ),
+            patch("lava_dispatcher.actions.boot.qdl.time.sleep") as sleep,
+        ):
+            product_id = action._crashdump_product_id("05c6", {"900e"}, "abcdef12")
+        self.assertEqual("900e", product_id)
+        self.assertEqual(2, sleep.call_count)
+
+    def test_capture_before_power_off_leaves_the_cleanup_alarm(self):
+        # Outside cleanup() there is no job-cleanup alarm to put back.
+        action = self.create_ramdump_action({"ramdump_publish_command": "/bin/true"})
+        with (
+            patch(
+                "lava_dispatcher.actions.boot.qdl.usb_device_present",
+                return_value="900e",
+            ),
+            patch("lava_dispatcher.actions.boot.qdl.which", return_value="/foo/qdl"),
+            patch("lava_dispatcher.actions.boot.qdl.create_tarfile"),
+            patch(
+                "lava_dispatcher.actions.boot.qdl.compress_file",
+                side_effect=lambda path, comp: f"{path}.{comp}",
+            ),
+            patch.object(
+                action, "mkdtemp", return_value=str(self.create_temporary_directory())
+            ),
+            patch.object(action, "run_cmd", return_value=0),
+            patch.object(action, "parsed_command", return_value=""),
+            patch.object(action.logger, "results"),
+            patch.object(action.job, "rearm_cleanup_timeout") as rearm,
+        ):
+            self.assertTrue(action.before_power_off())
+        rearm.assert_not_called()
 
     def test_capture_rearms_the_cleanup_alarm(self):
         # The capture runs under its own timeout window, which disarms the

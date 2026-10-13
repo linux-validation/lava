@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from shlex import split as shlex_split
 from typing import TYPE_CHECKING
 
-from lava_common.constants import RAMDUMP_TIMEOUT
+from lava_common.constants import RAMDUMP_SETTLE_TIME, RAMDUMP_TIMEOUT
 from lava_common.exceptions import ConfigurationError, JobError
 from lava_dispatcher.action import Action, Pipeline
 from lava_dispatcher.logical import RetryAction
@@ -192,29 +193,53 @@ class QDLRamdumpAction(Action):
     description = "capture a ramdump if the board crashed into EDL crashdump mode"
     summary = "capture qdl ramdump on crash"
 
-    # Guards the capture. Kept on the job rather than on the action because a
+    # Guards the check. Kept on the job rather than on the action because a
     # job may contain several qdl boot actions, each with its own instance of
-    # this action, and between them they must dump at most once.
-    JOB_GUARD = "qdl_ramdump_captured"
+    # this action, and between them they must look, and dump, at most once.
+    JOB_GUARD = "qdl_ramdump_checked"
+
+    def before_power_off(self) -> bool:
+        """
+        Called by the finalize action just before it powers the board off,
+        which is the last moment a board that crashed can still be dumped.
+
+        Returns True if a capture was attempted.
+        """
+        return self._capture_if_crashed()
 
     def cleanup(self, connection, max_end_time=None):
-        # Only at teardown, never during run(). cleanup() is walked for every
-        # action in pipeline order before the finalize PowerOff, and Job.run()
-        # calls it in a finally, so this runs exactly once whether the job
-        # passed, failed or was interrupted - by which time the board has had
-        # every chance to crash.
-        self._capture_if_crashed()
+        # A job that did not get as far as finalize is powered off by the
+        # finalize cleanup instead. cleanup() is walked for every action in
+        # pipeline order, so this still comes before that power-off. It does
+        # nothing if finalize has already looked.
+        self._capture_if_crashed(in_cleanup=True)
         super().cleanup(connection, max_end_time)
 
     def publish_command(self):
         """The worker's configured way of delivering a ramdump, if it has one."""
         return self.job.parameters.get("dispatcher", {}).get("ramdump_publish_command")
 
-    def _capture_if_crashed(self):
+    def _crashdump_product_id(self, usb_vendor_id, product_ids, board_qdl_id):
+        """
+        Look for this board in EDL crashdump mode. A board that has only just
+        crashed takes a moment to re-enumerate on USB, so keep looking for
+        RAMDUMP_SETTLE_TIME seconds before deciding that it did not.
+        """
+        for _ in range(RAMDUMP_SETTLE_TIME):
+            product_id = usb_device_present(
+                usb_vendor_id, product_ids, serial=board_qdl_id
+            )
+            if product_id:
+                return product_id
+            time.sleep(1)
+        return usb_device_present(usb_vendor_id, product_ids, serial=board_qdl_id)
+
+    def _capture_if_crashed(self, in_cleanup: bool = False) -> bool:
+        """Returns True if the board had crashed and a capture was attempted."""
         if getattr(self.job, self.JOB_GUARD, False):
-            return
+            return False
         if not self.parameters.get("ramdump"):
-            return
+            return False
         # A dump is written to the job's temporary directory, which LAVA
         # deletes the moment teardown finishes. Without somewhere to send it
         # there is nothing to be gained from spending several minutes of that
@@ -224,7 +249,7 @@ class QDLRamdumpAction(Action):
                 "No 'ramdump_publish_command' dispatcher configuration - "
                 "nowhere to deliver a ramdump, so not capturing one"
             )
-            return
+            return False
 
         usb_vendor_id = self.job.device.get("usb_vendor_id")
         board_qdl_id = self.job.device.get("board_qdl_id")
@@ -233,7 +258,7 @@ class QDLRamdumpAction(Action):
                 "Device has no 'board_qdl_id', so this board cannot be told "
                 "apart from the others on this worker - skipping ramdump"
             )
-            return
+            return False
         # A crashed board can re-enumerate under any of several EDL dump product
         # ids depending on the SoC, so check them all. A device may also pin an
         # extra id via 'qdl_ramdump_product_id'.
@@ -241,12 +266,14 @@ class QDLRamdumpAction(Action):
         configured = self.job.device.get("qdl_ramdump_product_id")
         if configured:
             ramdump_product_ids.add(str(configured))
+        # From here on the job has looked; no other qdl boot action may.
+        setattr(self.job, self.JOB_GUARD, True)
         # Match the serial too. A worker drives several boards, and any one of
         # them may be sitting in crashdump mode from an earlier crash; vendor
         # and product alone would make every job on the worker believe its own
         # board had crashed.
-        product_id = usb_device_present(
-            usb_vendor_id, ramdump_product_ids, serial=board_qdl_id
+        product_id = self._crashdump_product_id(
+            usb_vendor_id, ramdump_product_ids, board_qdl_id
         )
         if not product_id:
             # this board is not in crashdump mode - do nothing
@@ -254,10 +281,8 @@ class QDLRamdumpAction(Action):
                 "No crashdump device with serial %s, this board did not crash",
                 board_qdl_id,
             )
-            return
+            return False
 
-        # From here on the job has dumped; no other qdl boot action may.
-        setattr(self.job, self.JOB_GUARD, True)
         self.logger.warning(
             "Board is in EDL crashdump mode (%s:%s serial %s) - capturing ramdump",
             usb_vendor_id,
@@ -279,11 +304,10 @@ class QDLRamdumpAction(Action):
         # ramdump_timeout covers all of it: dumping the board, packaging what
         # came out and handing that to the publish command. A full DDR dump
         # routinely takes several minutes and the upload after it can take
-        # longer still, far more than the shared job-cleanup alarm
-        # (CLEANUP_TIMEOUT, 300s) allows. Exceeding that alarm would also
-        # starve the finalize power-off, so run the lot under a window of its
-        # own and re-arm the shared alarm afterwards to keep the rest of
-        # teardown bounded.
+        # longer still, far more than the finalize action or the shared
+        # job-cleanup alarm (CLEANUP_TIMEOUT, 300s) allow. Exceeding either
+        # would also starve the power-off, so run the lot under a window of
+        # its own.
         self.timeout.duration = int(
             self.parameters.get("ramdump_timeout", RAMDUMP_TIMEOUT)
         )
@@ -296,8 +320,11 @@ class QDLRamdumpAction(Action):
             # propagate out of cleanup() and take the rest of teardown with it.
             self.logger.error("qdl ramdump did not finish: %s", exc)
         finally:
-            # The window above disarms the shared cleanup alarm on exit.
-            self.job.rearm_cleanup_timeout()
+            # The window above disarms SIGALRM on exit. In cleanup that is
+            # the shared job-cleanup alarm, which has to be put back to keep
+            # the rest of teardown bounded. Finalize arms its own again.
+            if in_cleanup:
+                self.job.rearm_cleanup_timeout()
 
         # Record a test result linking to the ramdump so an engineer can find
         # it from the job results.
@@ -310,6 +337,7 @@ class QDLRamdumpAction(Action):
         if extra:
             results["extra"] = extra
         self.logger.results(results)
+        return True
 
     def _capture_and_publish(self, command, out_dir):
         """

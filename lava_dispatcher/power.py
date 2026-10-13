@@ -337,6 +337,11 @@ class FinalizeAction(Action):
         The pipeline of FinalizeAction is special - it needs to run even in the case of error / cancel.
         """
         self.ran = True
+        if self.before_power_off():
+            # A ramdump capture runs under a window of its own and may well
+            # have outlasted this action's; the power-off still has to happen.
+            if max_end_time <= time.monotonic():
+                max_end_time = time.monotonic() + self.timeout.duration
         try:
             connection = super().run(connection, max_end_time)
             if connection:
@@ -348,6 +353,27 @@ class FinalizeAction(Action):
         for protocol in self.job.protocols:
             protocol.finalise_protocol(self.job.device)
         return connection
+
+    def before_power_off(self) -> bool:
+        """
+        Give every action in the job that wants it a last look at the board
+        while it still has power, e.g. to capture a ramdump from one that
+        crashed. Returns True if any of them did something with it.
+        """
+        acted = False
+        for action in self.job.pipeline._iter_actions():
+            hook = getattr(action, "before_power_off", None)
+            if hook is None or action is self:
+                continue
+            try:
+                acted = bool(hook()) or acted
+            except Exception as exc:
+                # whatever went wrong, the board must still be powered off
+                self.logger.error(
+                    "Failed to run '%s' before power-off: %s", action.name, str(exc)
+                )
+                self.logger.exception(traceback.format_exc())
+        return acted
 
     def cleanup(self, connection, max_end_time=None):
         # avoid running Finalize in validate or unit tests
