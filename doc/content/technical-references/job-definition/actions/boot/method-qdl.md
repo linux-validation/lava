@@ -82,9 +82,15 @@ so the crash can be analysed after the job has finished.
       minutes: 5
 ```
 
-LAVA looks for the crashed board once, while the job is being torn down, so
-that a board which crashes at any point during the job is still caught. That
-happens whether the job passed, failed or was cancelled.
+LAVA looks for the crashed board once, at the end of the job and just before
+the board is powered off, so that a board which crashes at any point during
+the job is still caught. That happens whether the job passed, failed or was
+cancelled, so a job that crashes the board on purpose and then finishes
+normally gets its dump too.
+
+A board that has only just crashed takes a moment to appear on USB in
+crashdump mode, so LAVA keeps looking for a few seconds before deciding that
+it did not crash.
 
 A job captures at most one dump, however many qdl boot actions it contains:
 they all name the dump after the job, so a second would overwrite the first.
