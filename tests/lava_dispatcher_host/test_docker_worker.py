@@ -6,6 +6,7 @@
 
 import argparse
 import platform
+import shutil
 import subprocess
 
 import pytest
@@ -278,6 +279,18 @@ class TestRun:
             f"registry.gitlab.com/lava/lava/{arch}/lava-dispatcher:2020.07.2.0010.g12371263",
             manifest=True,
         )
+
+    @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not installed")
+    def test_signal_during_container_setup(self, get_image, options, mocker):
+        # The signal arrives before the container exists, so docker kill
+        # fails. Stopping is still supposed to succeed.
+        mocker.patch(
+            "lava_dispatcher_host.docker_worker.filter_options",
+            side_effect=KeyboardInterrupt,
+        )
+        with pytest.raises(SystemExit) as e:
+            lava_dispatcher_host.docker_worker.start("2020.07", options)
+        assert e.value.code == 0
 
 
 class TestOptions:
