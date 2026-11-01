@@ -71,6 +71,10 @@ explicitly. Support is available for [git](#git), [url](#url) and [inline](#inli
 A remote git repository which needs to be cloned by the LAVA worker.
 
 Optional parameters:
+The entire repository is cloned and made available in the current working
+directory of the test. The YAML file can therefore call scripts and use other
+files from the same repository. To copy only what the test needs, see
+[dependency_path](../../../user/basic-tutorials/test-definition.md#dependency_path).
 
 * revision (`str`, default: `null`): specific commit SHA to check out
 * branch (`str`, default: `null`): git branch to clone
