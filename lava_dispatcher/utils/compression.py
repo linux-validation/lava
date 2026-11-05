@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess  # nosec - internal use.
 import tarfile
+import time
 from typing import TYPE_CHECKING
 
 from lava_common.exceptions import InfrastructureError, JobError
@@ -21,7 +22,7 @@ from lava_dispatcher.utils.contextmanager import chdir
 from lava_dispatcher.utils.shell import which
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
 # https://www.kernel.org/doc/Documentation/xz.txt
 compress_command_map: Mapping[str, tuple[str, ...]] = {
@@ -47,6 +48,73 @@ COMPRESSION_MAGIC: Mapping[str, bytes] = {
     "bz2": b"BZ",
     "zstd": b"\x28\xb5\x2f\xfd",
 }
+
+
+# Filesystem timestamps come from the coarse kernel clock, which can lag
+# time.time() by a tick, so look a little further back than the start time.
+FLUSH_CTIME_SLACK = 2.0
+# Small files add up to little write-back, and an fdatasync per file costs a
+# seek on a spinning disk, so a rootfs of many small files would crawl.
+FLUSH_MIN_SIZE = 1024 * 1024
+
+
+def flush_file(path: str | os.PathLike[str]) -> None:
+    """
+    Write a file out to disk now and drop it from the page cache.
+
+    Extracting a multi-GB image otherwise leaves gigabytes of dirty pages
+    for the kernel to write back after we return, and pushes everything
+    else out of the page cache. On a spinning disk the next command to start
+    (often a power or relay command with a short timeout) then waits seconds
+    to load its own binaries. Doing the write-back here puts that cost on the
+    extraction, which has a long timeout.
+
+    Best effort: a file that can't be opened is left to normal write-back.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return
+    try:
+        os.fdatasync(fd)
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _files_changed_since(directory: str, since: float, min_size: int) -> Iterator[str]:
+    stack = [directory]
+    while stack:
+        try:
+            entries = list(os.scandir(stack.pop()))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                elif entry.is_file(follow_symlinks=False):
+                    st = entry.stat(follow_symlinks=False)
+                    if st.st_ctime >= since and st.st_size >= min_size:
+                        yield entry.path
+            except OSError:
+                continue
+
+
+def flush_directory(directory: str, since: float, min_size: int | None = None) -> None:
+    """
+    flush_file() every regular file of at least min_size bytes under
+    directory changed since the given time.time(). The ctime is set when a
+    file is written and, unlike the mtime, isn't restored from an archive, so
+    this picks out what an extraction wrote without touching files that were
+    already there.
+    """
+    if min_size is None:
+        min_size = FLUSH_MIN_SIZE
+    for path in _files_changed_since(directory, since - FLUSH_CTIME_SLACK, min_size):
+        flush_file(path)
 
 
 def compress_file(infile: str, compression: str) -> str:
@@ -102,8 +170,14 @@ def decompress_file(infile: str, compression: str | None) -> str:
     cmd += (infile,)
 
     try:
+        start = time.time()
         with chdir(os.path.dirname(infile)):
             subprocess.check_output(cmd)
+        if compression == "zip":
+            # unzip writes the members next to the archive
+            flush_directory(os.path.dirname(infile), start)
+        else:
+            flush_file(out_file_path)
         return out_file_path
     except subprocess.CalledProcessError as proc_exc:
         raise JobError(
@@ -130,6 +204,7 @@ def untar_file(infile: str, outdir: str, strip_components: int = 0) -> None:
     args = ["tar", "-h", "-xf", infile]
     if strip_components:
         args.append(f"--strip-components={strip_components}")
+    start = time.time()
     try:
         subprocess.run(
             args=args,
@@ -144,6 +219,7 @@ def untar_file(infile: str, outdir: str, strip_components: int = 0) -> None:
             f"unable to untar file {infile!r}, "
             f"exit code {proc_exc.returncode}: {proc_exc.stderr!r}"
         )
+    flush_directory(outdir, start)
 
 
 def cpio(directory: str, filename: str) -> str:

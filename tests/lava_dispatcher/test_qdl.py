@@ -4,6 +4,10 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import os
+import tarfile
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from lava_common.constants import RAMDUMP_SETTLE_TIME, RAMDUMP_TIMEOUT
@@ -85,6 +89,40 @@ class TestQDLBootAction(LavaDispatcherTestCase):
             ["qcomflash", "qcomflash.rootfs.modules", "qcomflash.rootfs.config"],
             labels,
         )
+
+    def test_extract_reads_the_gzipped_tarball_directly(self):
+        job = Factory().create_job("qcs6490-rb3gen2", "sample_jobs/qdl-boot.yaml")
+        extract = job.pipeline.find_action(ExtractQcomflashAction)
+
+        with TemporaryDirectory("test-qdl-extract") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            src = tmp_path / "src"
+            src.mkdir()
+            (src / "rawprogram0.xml").write_text("<data/>")
+            tarball = tmp_path / "qcomflash.tar.gz"
+            with tarfile.open(tarball, "w:gz") as tar:
+                tar.add(src, arcname=".")
+
+            qdl_dir = tmp_path / "qdl"
+            extract.set_namespace_data(
+                action="download-action",
+                label="qcomflash",
+                key="file",
+                value=str(tarball),
+            )
+            extract.set_namespace_data(
+                action="qdl-deploy",
+                label="qdl-directory",
+                key="directory",
+                value=str(qdl_dir),
+            )
+            extract.run(None, None)
+
+            self.assertEqual("<data/>", (qdl_dir / "rawprogram0.xml").read_text())
+            # the tarball is streamed through tar: no intermediate .tar on disk
+            self.assertEqual(
+                ["qcomflash.tar.gz", "qdl", "src"], sorted(os.listdir(tmp_path))
+            )
 
     @patch("lava_dispatcher.actions.boot.qdl.which")
     def test_qdl_job_overlays_and_apply_overlay(self, which_mock):
