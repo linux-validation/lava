@@ -16,7 +16,7 @@ from lava_dispatcher.actions.deploy.apply_overlay import (
 )
 from lava_dispatcher.actions.deploy.download import DownloaderAction
 from lava_dispatcher.actions.deploy.overlay import CreateOverlay, OverlayAction
-from lava_dispatcher.utils.compression import decompress_file, untar_file
+from lava_dispatcher.utils.compression import untar_file
 
 if TYPE_CHECKING:
     from lava_dispatcher.job import Job
@@ -68,17 +68,11 @@ class ExtractQcomflashAction(Action):
         )
 
         # The download action decompresses the tarball itself when the job
-        # declares the compression, otherwise it is still gzipped.
-        if self.get_namespace_data(
-            action="download-action", label="qcomflash", key="decompressed"
-        ):
-            out_path = qcomflash
-        else:
-            self.logger.info("Decompressing %s", qcomflash)
-            out_path = decompress_file(qcomflash, "gz")
-
-        self.logger.info("Extracting %s to %s", out_path, qdl_dir)
-        untar_file(out_path, qdl_dir)
+        # declares the compression, otherwise it is still gzipped. GNU tar
+        # reads a gzipped tarball directly, which avoids writing out the
+        # multi-GB intermediate .tar only to read it back.
+        self.logger.info("Extracting %s to %s", qcomflash, qdl_dir)
+        untar_file(qcomflash, qdl_dir)
 
         if self.rootfs_key:
             rootfs = qdl_dir / self.rootfs_image

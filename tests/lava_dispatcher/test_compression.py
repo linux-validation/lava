@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from pathlib import Path
 from tarfile import TarFile
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 import responses
 from responses import RequestsMock
@@ -23,6 +25,8 @@ from lava_dispatcher.utils.compression import (
     cpio,
     create_tarfile,
     decompress_file,
+    flush_directory,
+    flush_file,
     split_initramfs,
     uncpio,
     untar_file,
@@ -541,6 +545,133 @@ class TestTar(TestCase):
 
             self.assertTrue((unpack_dir / "lib").is_symlink())
             self.assertEqual((unpack_dir / "usr" / "lib" / "x.ko").read_text(), "ko")
+
+
+class TestFlush(TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tmp_dir = TemporaryDirectory("test-flush")
+        self.addCleanup(tmp_dir.cleanup)
+        self.tmp_dir = Path(tmp_dir.name).resolve()
+
+        # record what was flushed: the fd is still open while fdatasync runs
+        self.flushed: set[str] = set()
+        real_fdatasync = os.fdatasync
+
+        def fdatasync(fd: int) -> None:
+            self.flushed.add(os.readlink(f"/proc/self/fd/{fd}"))
+            real_fdatasync(fd)
+
+        fdatasync_patch = patch(
+            "lava_dispatcher.utils.compression.os.fdatasync", side_effect=fdatasync
+        )
+        fdatasync_patch.start()
+        self.addCleanup(fdatasync_patch.stop)
+
+        # the test files are tiny
+        min_size_patch = patch("lava_dispatcher.utils.compression.FLUSH_MIN_SIZE", 0)
+        min_size_patch.start()
+        self.addCleanup(min_size_patch.stop)
+
+    def test_flush_file_drops_page_cache(self) -> None:
+        test_file = self.tmp_dir / "image"
+        test_file.write_bytes(b"x" * 4096)
+
+        with patch(
+            "lava_dispatcher.utils.compression.os.posix_fadvise"
+        ) as fadvise_mock:
+            flush_file(test_file)
+
+        self.assertEqual({str(test_file)}, self.flushed)
+        fadvise_mock.assert_called_once()
+        self.assertEqual(
+            (0, 0, os.POSIX_FADV_DONTNEED), fadvise_mock.call_args.args[1:]
+        )
+
+    def test_flush_file_is_best_effort(self) -> None:
+        # a missing file or a dangling symlink is left alone, without raising
+        flush_file(self.tmp_dir / "does_not_exist")
+        os.symlink("does_not_exist", self.tmp_dir / "link")
+        flush_file(self.tmp_dir / "link")
+
+        with patch(
+            "lava_dispatcher.utils.compression.os.posix_fadvise",
+            side_effect=OSError("not supported"),
+        ):
+            flush_file(__file__)
+
+        self.assertEqual({str(Path(__file__).resolve())}, self.flushed)
+
+    def test_flush_directory_skips_older_files(self) -> None:
+        (self.tmp_dir / "old").write_text("old")
+        sub_dir = self.tmp_dir / "sub"
+        sub_dir.mkdir()
+        (sub_dir / "new").write_text("new")
+        os.symlink("new", sub_dir / "link")
+        os.symlink("..", sub_dir / "loop")
+
+        with patch("lava_dispatcher.utils.compression.os.posix_fadvise"):
+            flush_directory(str(self.tmp_dir), 0)
+            self.assertEqual(
+                {str(self.tmp_dir / "old"), str(sub_dir / "new")}, self.flushed
+            )
+
+            self.flushed.clear()
+            flush_directory(str(self.tmp_dir), time.time() + 60)
+            self.assertEqual(set(), self.flushed)
+
+    def test_flush_directory_skips_small_files(self) -> None:
+        (self.tmp_dir / "small").write_bytes(b"x" * 10)
+        (self.tmp_dir / "large").write_bytes(b"x" * 100)
+
+        with patch("lava_dispatcher.utils.compression.os.posix_fadvise"):
+            flush_directory(str(self.tmp_dir), 0, min_size=100)
+
+        self.assertEqual({str(self.tmp_dir / "large")}, self.flushed)
+
+    def test_decompress_file_flushes_output(self) -> None:
+        test_file = self.tmp_dir / "image"
+        test_file.write_text("image")
+        compressed = compress_file(str(test_file), "gz")
+        test_file.unlink()
+        self.flushed.clear()
+
+        decompress_file(compressed, "gz")
+
+        self.assertEqual({str(test_file)}, self.flushed)
+
+    def test_untar_file_flushes_extracted_files(self) -> None:
+        src_dir = self.tmp_dir / "src"
+        (src_dir / "dir").mkdir(parents=True)
+        (src_dir / "top").write_text("top")
+        (src_dir / "dir" / "nested").write_text("nested")
+        archive = self.tmp_dir / "test.tar"
+        create_tarfile(str(src_dir), str(archive), arcname=".")
+
+        unpack_dir = self.tmp_dir / "unpack"
+        self.flushed.clear()
+        untar_file(str(archive), str(unpack_dir))
+
+        self.assertEqual(
+            {str(unpack_dir / "top"), str(unpack_dir / "dir" / "nested")},
+            self.flushed,
+        )
+
+    def test_untar_file_reads_gzipped_tarball(self) -> None:
+        src_dir = self.tmp_dir / "src"
+        src_dir.mkdir()
+        (src_dir / "image").write_text("image")
+        archive = self.tmp_dir / "test.tar"
+        create_tarfile(str(src_dir), str(archive), arcname=".")
+        archive_gz = compress_file(str(archive), "gz")
+        archive.unlink()
+
+        unpack_dir = self.tmp_dir / "unpack"
+        untar_file(archive_gz, str(unpack_dir))
+
+        self.assertEqual("image", (unpack_dir / "image").read_text())
+        # no intermediate .tar is written next to the archive
+        self.assertFalse(archive.exists())
 
 
 class TestSplitInitramfs(TestCase):
