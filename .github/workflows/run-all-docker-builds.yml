@@ -33,17 +33,48 @@ jobs:
       arch: ${{ matrix.arch }}
       version: ${{ matrix.version }}
 
-  update-factory-staging:
-    needs: [run-all-docker-build-jobs, run-all-test-jobs]
+  # The staging deploy must only ever run from the NEWEST qualcomm-* release
+  # branch. This file lives on every release branch, so the branch name alone
+  # cannot tell us whether this is that branch - ask the repository which
+  # release branches exist and compare. Any failure here leaves is_newest
+  # unset, which skips the deploy rather than deploying the wrong branch.
+  newest-release-branch:
     if: github.event_name == 'push' && startsWith(github.ref_name, 'qualcomm-20')
+    runs-on: ubuntu-latest
+    outputs:
+      is_newest: ${{ steps.compare.outputs.is_newest }}
+      newest: ${{ steps.compare.outputs.newest }}
+    steps:
+      - name: Compare this branch against the newest release branch
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Only bare qualcomm-YYYY.MM branches are release branches; a
+          # suffixed topic branch must never win the comparison. sort -V
+          # compares the numbers, so 2026.09 < 2026.10 and 2025.10 < 2026.01.
+          newest="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/branches" --jq '.[].name' \
+                    | grep -E '^qualcomm-20[0-9]{2}\.[0-9]{2}$' | sort -V | tail -1)"
+          echo "newest=${newest}" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_NAME}" = "${newest}" ]; then
+            echo "is_newest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_newest=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Staging deploy skipped::${GITHUB_REF_NAME} is not the newest release branch (${newest})"
+          fi
+
+  update-factory-staging:
+    needs: [run-all-docker-build-jobs, run-all-test-jobs, newest-release-branch]
+    if: needs.newest-release-branch.outputs.is_newest == 'true'
     uses: ./.github/workflows/update-factory-staging.yml
     with:
       image_tag: ${{ needs.run-all-docker-build-jobs.outputs.image_tag }}
     secrets: inherit
 
   update-dispatcher-factory-staging:
-    needs: [run-all-docker-build-jobs, run-all-test-jobs]
-    if: github.event_name == 'push' && startsWith(github.ref_name, 'qualcomm-20')
+    needs: [run-all-docker-build-jobs, run-all-test-jobs, newest-release-branch]
+    if: needs.newest-release-branch.outputs.is_newest == 'true'
     uses: ./.github/workflows/update-dispatcher-factory-staging.yml
     with:
       image_tag: ${{ needs.run-all-docker-build-jobs.outputs.image_tag }}
