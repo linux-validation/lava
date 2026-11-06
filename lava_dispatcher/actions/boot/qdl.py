@@ -146,10 +146,6 @@ class FlashQDLAction(Action):
                     "qdl version %d.%d is too low, 2.0 or higher is required" % version
                 )
 
-            if version >= (2, 7):
-                # --skipblock=sha256 is available
-                self.base_command.append("--skipblock=sha256")
-
             if qdl_debug:
                 self.base_command.extend(["--debug"])
             if qdl_storage:
