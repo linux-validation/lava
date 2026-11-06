@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from lava_common.constants import RAMDUMP_SETTLE_TIME, RAMDUMP_TIMEOUT
 from lava_common.exceptions import ConfigurationError, JobError
-from lava_dispatcher.actions.boot.qdl import FlashQDLAction, QDLRamdumpAction
+from lava_dispatcher.actions.boot.qdl import QDLRamdumpAction
 from lava_dispatcher.actions.deploy.apply_overlay import AppendOverlays
 from lava_dispatcher.actions.deploy.download import DownloaderAction
 from lava_dispatcher.actions.deploy.qdl import ExtractQcomflashAction
@@ -129,18 +129,6 @@ class TestQDLBootAction(LavaDispatcherTestCase):
             job.validate()
             return job
 
-    def assert_skipblock(self, version_output, expected):
-        """
-        Assert whether --skipblock=sha256, which requires qdl 2.7, is passed
-        to qdl for the given "qdl --version" output.
-        """
-        job = self.validate_qdl_job(version_output)
-        action = job.pipeline.find_action(FlashQDLAction)
-        if expected:
-            self.assertIn("--skipblock=sha256", action.base_command)
-        else:
-            self.assertNotIn("--skipblock=sha256", action.base_command)
-
     def assert_version_too_low(self, version_output, version):
         with self.assertRaises(ConfigurationError) as exc:
             self.validate_qdl_job(version_output)
@@ -158,37 +146,37 @@ class TestQDLBootAction(LavaDispatcherTestCase):
 
     def test_qdl_version_from_git_tag(self):
         # built from a git tag, the version is prefixed with "v"
-        for version_output, skipblock in (
-            ("qdl version v2.0", False),
-            ("qdl version v2.6", False),
-            ("qdl version v2.7", True),
-            ("qdl version v2.8", True),
+        for version_output in (
+            "qdl version v2.0",
+            "qdl version v2.6",
+            "qdl version v2.7",
+            "qdl version v2.8",
             # compared as numbers, not as strings
-            ("qdl version v2.10", True),
-            ("qdl version v3.0", True),
-            ("qdl version v10.0", True),
+            "qdl version v2.10",
+            "qdl version v3.0",
+            "qdl version v10.0",
         ):
             with self.subTest(version_output=version_output):
-                self.assert_skipblock(version_output, skipblock)
+                self.validate_qdl_job(version_output)
 
     def test_qdl_version_from_debian_package(self):
         # installed from a Debian package, the version reported is the package
         # version: [epoch:]upstream_version[-debian_revision]
-        for version_output, skipblock in (
-            ("qdl version 2.0-1", False),
-            ("qdl version 2.6-1~bpo13+1", False),
-            ("qdl version 2.6.9-1", False),
-            ("qdl version 2.7-1~bpo13+1", True),
-            ("qdl version 2.7-1", True),
-            ("qdl version 2.7.1-1+deb13u1", True),
-            ("qdl version 1:2.7+dfsg-2", True),
-            ("qdl version 3.0-1~bpo13+1", True),
-            ("qdl version 1:3.0-1", True),
+        for version_output in (
+            "qdl version 2.0-1",
+            "qdl version 2.6-1~bpo13+1",
+            "qdl version 2.6.9-1",
+            "qdl version 2.7-1~bpo13+1",
+            "qdl version 2.7-1",
+            "qdl version 2.7.1-1+deb13u1",
+            "qdl version 1:2.7+dfsg-2",
+            "qdl version 3.0-1~bpo13+1",
+            "qdl version 1:3.0-1",
             # a Debian package built from a git tag keeps the "v" prefix
-            ("qdl version v2.7-1~bpo13+1", True),
+            "qdl version v2.7-1~bpo13+1",
         ):
             with self.subTest(version_output=version_output):
-                self.assert_skipblock(version_output, skipblock)
+                self.validate_qdl_job(version_output)
 
     def test_qdl_version_surrounded_by_other_output(self):
         for version_output in (
@@ -198,7 +186,7 @@ class TestQDLBootAction(LavaDispatcherTestCase):
             "text before version\nqdl version v2.7\ntext after version",
         ):
             with self.subTest(version_output=version_output):
-                self.assert_skipblock(version_output, True)
+                self.validate_qdl_job(version_output)
 
     def test_qdl_version_too_low(self):
         for version_output, version in (
