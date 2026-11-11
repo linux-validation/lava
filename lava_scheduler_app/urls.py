@@ -27,9 +27,11 @@ from lava_scheduler_app.views import (
     healthcheck,
     index,
     internal_v1_jobs,
+    internal_v1_jobs_attachments,
     internal_v1_jobs_logs,
     internal_v1_workers,
     job_annotate_failure,
+    job_attachment,
     job_cancel,
     job_change_priority,
     job_configuration,
@@ -158,6 +160,11 @@ urlpatterns = (
         name="lava.scheduler.job.configuration",
     ),
     path(
+        "job/<job_id:pk>/attachments/<str:name>",
+        job_attachment,
+        name="lava.scheduler.job.attachment",
+    ),
+    path(
         "job/<job_id:pk>/log_file/plain",
         job_log_file_plain,
         name="lava.scheduler.job.log_file.plain",
@@ -282,6 +289,11 @@ urlpatterns = (
         "internal/v1/jobs/<int:pk>/logs/",  # No support for multinode jobs
         internal_v1_jobs_logs,
         name="lava.scheduler.internal.v1.jobs.logs",
+    ),
+    path(
+        "internal/v1/jobs/<int:pk>/attachments/",  # No support for multinode jobs
+        internal_v1_jobs_attachments,
+        name="lava.scheduler.internal.v1.jobs.attachments",
     ),
     path(
         "internal/v1/workers/",

@@ -11,6 +11,7 @@ import pytest
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Group, User
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
@@ -271,7 +272,12 @@ def test_devices(client, setup):
     assert ret.templates[0].name == "lava_scheduler_app/alldevices.html"  # nosec
     assert len(ret.context["devices_table"].data) == 4  # nosec
     hostnames = {x.hostname for x in ret.context["devices_table"].data}
-    assert hostnames == {"qemu_:')-,;~", "qemu01", "juno-uboot-01", "juno-uefi-01"}  # nosec
+    assert hostnames == {
+        "qemu_:')-,;~",
+        "qemu01",
+        "juno-uboot-01",
+        "juno-uefi-01",
+    }  # nosec
 
 
 @pytest.mark.django_db
@@ -281,7 +287,12 @@ def test_devices_active(client, setup):
     assert ret.templates[0].name == "lava_scheduler_app/activedevices.html"  # nosec
     assert len(ret.context["active_devices_table"].data) == 4  # nosec
     hostnames = {x.hostname for x in ret.context["active_devices_table"].data}
-    assert hostnames == {"qemu_:')-,;~", "qemu01", "juno-uboot-01", "juno-uefi-01"}  # nosec
+    assert hostnames == {
+        "qemu_:')-,;~",
+        "qemu01",
+        "juno-uboot-01",
+        "juno-uefi-01",
+    }  # nosec
 
 
 @pytest.mark.django_db
@@ -1143,7 +1154,12 @@ def test_lab_health(client, setup):
     assert ret.templates[0].name == "lava_scheduler_app/labhealth.html"  # nosec
     assert len(ret.context["device_health_table"].data) == 4  # nosec
     hostnames = {x["hostname"] for x in ret.context["device_health_table"].data}
-    assert hostnames == {"qemu_:')-,;~", "qemu01", "juno-uboot-01", "juno-uefi-01"}  # nosec
+    assert hostnames == {
+        "qemu_:')-,;~",
+        "qemu01",
+        "juno-uboot-01",
+        "juno-uefi-01",
+    }  # nosec
 
 
 @pytest.mark.django_db
@@ -1866,3 +1882,115 @@ secrets:
             ["not", "a", "string"],
         ]
         assert all(login["user"] == "lavauser" for login in logins)
+
+
+@pytest.fixture
+def attachment_job(setup, settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path)
+    return TestJob.objects.get(description="test job 02")
+
+
+def upload_attachment(client, job, name, content, token=None):
+    return client.post(
+        reverse("lava.scheduler.internal.v1.jobs.attachments", args=[job.id]),
+        {"name": name, "file": SimpleUploadedFile(name, content)},
+        HTTP_LAVA_TOKEN=job.token if token is None else token,
+    )
+
+
+@pytest.mark.django_db
+def test_internal_v1_jobs_attachments(client, attachment_job):
+    job = attachment_job
+    ret = upload_attachment(client, job, "kvm-001-screen.png", b"\x89PNG data")
+    assert ret.status_code == 200
+    assert ret.json() == {"name": "kvm-001-screen.png", "size": 9}
+    stored = Path(job.output_dir) / "attachments" / "kvm-001-screen.png"
+    assert stored.read_bytes() == b"\x89PNG data"
+    # Nothing half-written is left behind.
+    assert [path.name for path in stored.parent.iterdir()] == ["kvm-001-screen.png"]
+
+
+@pytest.mark.django_db
+def test_internal_v1_jobs_attachments_refused(client, attachment_job, settings):
+    job = attachment_job
+    url = reverse("lava.scheduler.internal.v1.jobs.attachments", args=[job.id])
+
+    ret = client.post(url, {"name": "a.png"})
+    assert (ret.status_code, ret.json()) == (400, {"error": "Missing 'token'"})
+    ret = upload_attachment(client, job, "a.png", b"x", token="hello")
+    assert (ret.status_code, ret.json()) == (400, {"error": "Invalid 'token'"})
+    ret = client.post(
+        url, {"file": SimpleUploadedFile("a.png", b"x")}, HTTP_LAVA_TOKEN=job.token
+    )
+    assert (ret.status_code, ret.json()) == (400, {"error": "Missing 'name'"})
+    ret = client.post(url, {"name": "a.png"}, HTTP_LAVA_TOKEN=job.token)
+    assert (ret.status_code, ret.json()) == (400, {"error": "Missing 'file'"})
+
+    for name in ["../a.png", ".hidden", "a/b.png", "a b.png", "x" * 129]:
+        ret = upload_attachment(client, job, name, b"x")
+        assert ret.status_code == 400, name
+
+    assert upload_attachment(client, job, "a.png", b"x").status_code == 200
+    ret = upload_attachment(client, job, "a.png", b"y")
+    assert ret.status_code == 409
+    assert (Path(job.output_dir) / "attachments" / "a.png").read_bytes() == b"x"
+
+    settings.ATTACHMENT_MAX_SIZE = 4
+    assert upload_attachment(client, job, "big.png", b"12345").status_code == 413
+    settings.ATTACHMENT_MAX_SIZE = 100
+    settings.ATTACHMENT_MAX_TOTAL_SIZE = 3
+    assert upload_attachment(client, job, "b.png", b"123").status_code == 413
+    settings.ATTACHMENT_MAX_TOTAL_SIZE = 100
+    settings.ATTACHMENT_MAX_COUNT = 1
+    assert upload_attachment(client, job, "c.png", b"1").status_code == 413
+
+
+@pytest.mark.django_db
+def test_internal_v1_jobs_attachments_only_while_running(
+    client, setup, settings, tmp_path
+):
+    settings.MEDIA_ROOT = str(tmp_path)
+    job = TestJob.objects.get(description="test job 01")
+    ret = upload_attachment(client, job, "a.png", b"x")
+    assert ret.status_code == 409
+    assert ret.json() == {"error": f"Job '{job.id}' is not running"}
+
+
+@pytest.mark.django_db
+def test_job_attachment(client, attachment_job):
+    job = attachment_job
+    upload_attachment(client, job, "screen.png", b"\x89PNG data")
+    upload_attachment(client, job, "page.html", b"<script>alert(1)</script>")
+
+    ret = client.get(
+        reverse("lava.scheduler.job.attachment", args=[job.id, "screen.png"])
+    )
+    assert ret.status_code == 200
+    assert b"".join(ret.streaming_content) == b"\x89PNG data"
+    assert ret["Content-Type"] == "image/png"
+    assert ret["Content-Disposition"] == "inline; filename=screen.png"
+    assert ret["X-Content-Type-Options"] == "nosniff"
+    assert "sandbox" in ret["Content-Security-Policy"]
+
+    # Types a browser could run are only ever downloaded.
+    ret = client.get(
+        reverse("lava.scheduler.job.attachment", args=[job.id, "page.html"])
+    )
+    assert ret["Content-Type"] == "application/octet-stream"
+    assert ret["Content-Disposition"] == "attachment; filename=page.html"
+
+    for name in ["missing.png", ".screen.png.partial", "..", "%2e%2e"]:
+        ret = client.get(reverse("lava.scheduler.job.attachment", args=[job.id, name]))
+        assert ret.status_code == 404, name
+
+
+@pytest.mark.django_db
+def test_job_attachment_follows_job_visibility(client, attachment_job):
+    job = attachment_job
+    upload_attachment(client, job, "screen.png", b"\x89PNG")
+    job.is_public = False
+    job.save()
+    ret = client.get(
+        reverse("lava.scheduler.job.attachment", args=[job.id, "screen.png"])
+    )
+    assert ret.status_code == 403

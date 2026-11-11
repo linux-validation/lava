@@ -82,6 +82,12 @@ from lava_results_app.models import (
     TestData,
 )
 from lava_results_app.utils import description_filename
+from lava_scheduler_app.attachments import (
+    AttachmentRefused,
+    attachment_path,
+    content_type,
+    save_attachment,
+)
 from lava_scheduler_app.dbutils import (
     device_summary,
     device_type_summary,
@@ -1502,6 +1508,41 @@ def internal_v1_jobs_logs(request, pk):
     return JsonResponse({"line_count": line_count})
 
 
+@require_POST
+@csrf_exempt
+def internal_v1_jobs_attachments(request, pk):
+    try:
+        job = TestJob.objects.get(pk=pk)
+    except TestJob.DoesNotExist:
+        return JsonResponse({"error": f"Unknown job '{pk}'"}, status=404)
+
+    token = request.headers.get("lava-token")
+    if token is None:
+        return JsonResponse({"error": "Missing 'token'"}, status=400)
+    if not constant_time_compare(token, job.token):
+        return JsonResponse({"error": "Invalid 'token'"}, status=400)
+
+    # Only a job that is still running can add to its output.
+    if job.state not in [TestJob.STATE_RUNNING, TestJob.STATE_CANCELING]:
+        return JsonResponse({"error": f"Job '{pk}' is not running"}, status=409)
+
+    try:
+        name = request.POST.get("name")
+        upload = request.FILES.get("file")
+    except RequestDataTooBig:
+        return HttpResponse(REQUEST_DATA_TOO_BIG_MSG, status=413)
+    if not name:
+        return JsonResponse({"error": "Missing 'name'"}, status=400)
+    if upload is None:
+        return JsonResponse({"error": "Missing 'file'"}, status=400)
+
+    try:
+        size = save_attachment(job, name, upload)
+    except AttachmentRefused as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status)
+    return JsonResponse({"name": name, "size": size})
+
+
 # Capacity figures a worker may report with its ping, and how to read each.
 # Every one is optional, so that a worker from an older release - or one that
 # could not read a figure - still pings successfully.
@@ -2330,6 +2371,22 @@ def job_log_file_plain(request, pk):
         return response
     except OSError:
         raise Http404
+
+
+def job_attachment(request, pk, name):
+    job = TestJob.get_restricted_job(pk, request.user)
+    path = attachment_path(job, name)
+    if path is None:
+        raise Http404
+    kind, inline = content_type(name)
+    response = FileResponse(path.open("rb"), content_type=kind)
+    disposition = "inline" if inline else "attachment"
+    response["Content-Disposition"] = f"{disposition}; filename={name}"
+    # The file came from the device, not from LAVA: never let a browser
+    # treat it as anything but the type given, or run anything in it.
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "sandbox; default-src 'none'"
+    return response
 
 
 def job_log_incremental(request, pk):
