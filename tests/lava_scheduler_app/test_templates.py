@@ -223,6 +223,36 @@ class TestTemplates(BaseTemplateTest):
         self.assertEqual(template_dict["usb_vendor_id"], "8087")
         self.assertEqual(template_dict["usb_product_id"], "0aba")
 
+    def test_base_qdl_board_ids(self):
+        data = """{% extends 'kaanapali-mtp.jinja2' %}
+{% set fastboot_serial_number = 'aee96d1d' %}
+{% set board_qdl_id = 'C191F6A9' %}"""
+        template_dict = self.render_device_dictionary_from_text(data)
+        self.assertEqual(template_dict["board_qdl_id"], "C191F6A9")
+        self.assertEqual(template_dict["board_id"], "QUSB_BULK_CID:046A_SN:C191F6A9")
+        self.assertEqual(
+            template_dict["device_info"],
+            [
+                {"board_id": "QUSB_BULK_CID:046A_SN:C191F6A9"},
+                {"board_id": "aee96d1d"},
+                {"board_id": "C191F6A9"},
+            ],
+        )
+
+        # no fastboot serial number when the board doesn't boot to fastboot
+        data = """{% extends 'hamoa-iot-evk.jinja2' %}
+{% set fastboot_serial_number = '00000000' %}
+{% set board_qdl_id = '03419D8A' %}"""
+        template_dict = self.render_device_dictionary_from_text(data)
+        self.assertEqual(template_dict["board_id"], "QUSB_BULK_CID:0446_SN:03419D8A")
+        self.assertEqual(
+            template_dict["device_info"],
+            [
+                {"board_id": "QUSB_BULK_CID:0446_SN:03419D8A"},
+                {"board_id": "03419D8A"},
+            ],
+        )
+
     def test_depthcharge_template(self):
         data = """\
 {% extends 'base-depthcharge.jinja2' %}
