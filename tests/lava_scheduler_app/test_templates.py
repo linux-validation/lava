@@ -362,6 +362,16 @@ class TestTemplates(BaseTemplateTest):
 {% set connection_command = 'telnet localhost 7302' %}"""
         self.render_device_dictionary_from_text(data)
 
+    def test_kvm_target(self):
+        data = """{% extends 'x86.jinja2' %}
+{% set kvm_target = 'board-a' %}"""
+        device = self.render_device_dictionary_from_text(data)
+        self.assertEqual({"target": "board-a"}, device["kvm"])
+
+    def test_no_kvm_target(self):
+        device = self.render_device_dictionary_from_text("{% extends 'x86.jinja2' %}")
+        self.assertNotIn("kvm", device)
+
     def test_pexpect_spawn_window(self):
         template_dict = self.render_device_dictionary("hi6220-hikey-01")
         self.assertIsNotNone(template_dict["constants"])
