@@ -254,6 +254,12 @@ PUBLIC_JOB_WINDOW_DAYS = None
 # Default health frequency in hours
 HEALTH_FREQUENCY_HOURS = 24
 
+# Limits on the files a running job attaches to itself, in bytes: for one
+# file, and for all of a job's files together, and how many a job may have.
+ATTACHMENT_MAX_SIZE = 10 * 1024 * 1024
+ATTACHMENT_MAX_TOTAL_SIZE = 200 * 1024 * 1024
+ATTACHMENT_MAX_COUNT = 500
+
 # How often the scheduler samples the per-device-type queue, in seconds.
 QUEUE_SNAPSHOT_INTERVAL = 300
 
