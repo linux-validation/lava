@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import base64
 import re
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -435,4 +436,122 @@ def test_device_command_files_are_attached(test_shell, mocker, tmp_path):
         "power_on",
         "0_smoke",
         test_shell.level,
+    )
+
+
+@pytest.fixture
+def kvm_shell(test_shell):
+    test_shell.validate()
+    test_shell.job.device["hostname"] = "board-a"
+    test_shell.job.device.pop("kvm", None)
+    test_shell.job.parameters["dispatcher"] = {"kvm_command": "koictl --socket /s"}
+    test_shell.definition = "0_display"
+    return test_shell
+
+
+def kvm_signal(action, *arguments):
+    encoded = ["a" + base64.b64encode(a.encode()).decode() for a in arguments]
+    return [action, *encoded]
+
+
+def test_kvm_type(kvm_shell, mocker):
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    connection = MagicMock()
+
+    kvm_shell.signal_kvm(connection, kvm_signal("type", "root\n"))
+
+    run_cmd.assert_called_once_with(
+        [
+            "koictl",
+            "--socket",
+            "/s",
+            "-t",
+            "board-a",
+            "keyboard",
+            "type",
+            "--",
+            "root\n",
+        ],
+        allow_fail=True,
+    )
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK type 0>", delay=mocker.ANY
+    )
+
+
+def test_kvm_snapshot_is_attached(kvm_shell, mocker, tmp_path):
+    mocker.patch.object(kvm_shell, "mkdtemp", return_value=str(tmp_path))
+
+    def snapshot(command, allow_fail):
+        Path(command[-1]).write_bytes(b"\x89PNG")
+        return 0
+
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", side_effect=snapshot)
+    attach = mocker.patch.object(kvm_shell.job.attachments, "attach")
+    connection = MagicMock()
+
+    kvm_shell.signal_kvm(connection, kvm_signal("snapshot", "boot-menu"))
+
+    assert run_cmd.call_args.args[0] == [
+        "koictl",
+        "--socket",
+        "/s",
+        "-t",
+        "board-a",
+        "snapshot",
+        str(tmp_path / "boot-menu.png"),
+    ]
+    attach.assert_called_once_with(
+        kvm_shell.logger,
+        tmp_path / "boot-menu.png",
+        "kvm_snapshot",
+        "0_display",
+        kvm_shell.level,
+    )
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK snapshot 0>", delay=mocker.ANY
+    )
+
+
+def test_kvm_client_failure(kvm_shell, mocker):
+    mocker.patch.object(kvm_shell, "run_cmd", return_value=3)
+    connection = MagicMock()
+    kvm_shell.signal_kvm(connection, kvm_signal("press", "f2"))
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK press 3>", delay=mocker.ANY
+    )
+
+
+def test_kvm_invalid_request(kvm_shell, mocker):
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd")
+    connection = MagicMock()
+    kvm_shell.signal_kvm(connection, kvm_signal("reboot"))
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK reboot 2>", delay=mocker.ANY
+    )
+
+
+def test_kvm_target_other_than_the_device_name(kvm_shell, mocker):
+    kvm_shell.job.device["kvm"] = {"target": "port-3"}
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    kvm_shell.signal_kvm(MagicMock(), kvm_signal("press", "f2"))
+    assert run_cmd.call_args.args[0][3:5] == ["-t", "port-3"]
+
+
+def test_kvm_default_client(kvm_shell, mocker):
+    kvm_shell.job.parameters["dispatcher"] = {}
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    kvm_shell.signal_kvm(MagicMock(), kvm_signal("press", "f2"))
+    assert run_cmd.call_args.args[0][:3] == ["koictl", "-t", "board-a"]
+
+
+def test_kvm_device_without_a_name(kvm_shell, mocker):
+    del kvm_shell.job.device["hostname"]
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd")
+    connection = MagicMock()
+    kvm_shell.signal_kvm(connection, kvm_signal("press", "f2"))
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK press 1>", delay=mocker.ANY
     )

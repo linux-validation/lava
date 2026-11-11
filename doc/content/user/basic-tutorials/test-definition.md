@@ -150,6 +150,44 @@ lava-test-reference <test-case-id> --result <result> --reference <url>
     The URL should be a simple file reference, complex query strings could
     fail to be parsed.
 
+#### lava-kvm
+
+Drive the device's keyboard, mouse and screen through the KVM it is connected
+to. The dispatcher runs the worker's KVM client, koidaemon's `koictl` unless
+the dispatcher configuration names another with `kvm_command`. The client
+knows the device by its LAVA name, or by its
+[`kvm_target`](../../technical-references/configuration/device-dictionary.md#kvm_target).
+The dispatcher runs each request on the worker and `lava-kvm` exits with its
+return code:
+
+```shell
+lava-kvm snapshot [LABEL]           # attach a picture of the screen to the job
+lava-kvm type TEXT                  # type text, with a US keyboard layout
+lava-kvm press KEY...               # e.g. f2, enter, ctrl+alt+delete
+lava-kvm key-down KEY
+lava-kvm key-up KEY
+lava-kvm move X Y                   # screen pixels from the top-left corner
+lava-kvm click [BUTTON] [X Y]       # left, right or middle
+lava-kvm double-click [BUTTON] [X Y]
+lava-kvm mouse-down [BUTTON]
+lava-kvm mouse-up [BUTTON]
+lava-kvm scroll NOTCHES             # positive scrolls up
+```
+
+Each snapshot is attached to the job as `kvm_snapshot-NNN-LABEL.png`, shown in
+the job log where it was taken, with a result of that name in the test
+definition's suite. `lava-kvm` needs `base64` on the device, and must run in
+the foreground of the test shell.
+
+#### Attaching files
+
+Files left in `$LAVA_OUTPUT_DIR` by a device command (a job `command` action,
+or `lava-device-command` in a docker test) are attached to the job. They are
+uploaded as they are made, shown in the job log, listed by the REST API at
+`jobs/<id>/attachments/`, and each gets a test result. Images are shown in the
+log; other files are linked. The server limits their size and number with
+`ATTACHMENT_MAX_SIZE`, `ATTACHMENT_MAX_TOTAL_SIZE` and `ATTACHMENT_MAX_COUNT`.
+
 #### lava-test-raise
 
 Raise a `TestError` to abort the current test job immediately:

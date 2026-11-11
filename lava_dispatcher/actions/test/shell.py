@@ -19,6 +19,7 @@ from lava_common.exceptions import (
     LAVATimeoutError,
     TestError,
 )
+from lava_dispatcher import kvm_client
 from lava_dispatcher.action import Action, Pipeline
 from lava_dispatcher.actions.commands import CommandAction
 from lava_dispatcher.actions.test.mixins import ReportMixin
@@ -592,6 +593,52 @@ class TestShellAction(ReportMixin, Action):
         finally:
             self.attach_files(output_dir, name, self.definition or "lava")
 
+    def signal_kvm(self, test_connection, params):
+        action = params[0] if params else ""
+        ret = self.run_kvm_action(action, params[1:])
+        test_connection.sendline(
+            "<LAVA_KVM_ACK %s %d>" % (action, ret), delay=self.character_delay
+        )
+
+    def run_kvm_action(self, action, encoded_arguments) -> int:
+        """Run what lava-kvm asked for on the worker's KVM client. See
+        lava_dispatcher.kvm_client."""
+        # The KVM client knows the device by its name, unless the device
+        # dictionary gives another with kvm_target.
+        target = (self.job.device.get("kvm") or {}).get("target")
+        target = target or self.job.device.get("hostname")
+        kvm_command = self.job.parameters.get("dispatcher", {}).get(
+            "kvm_command", kvm_client.DEFAULT_KVM_COMMAND
+        )
+        if not target:
+            self.logger.error("This device has no name to give the KVM client")
+            return 1
+        try:
+            request = kvm_client.parse_request(
+                action, kvm_client.decode_arguments(encoded_arguments)
+            )
+        except kvm_client.KVMRequestError as exc:
+            self.logger.error("Invalid KVM request: %s", exc)
+            return 2
+
+        arguments = request.arguments
+        output_dir = None
+        if request.label is not None:
+            # Snapshots are attached to the job, as results of the test
+            # definition that took them.
+            output_dir = self.mkdtemp()
+            arguments = [*arguments, os.path.join(output_dir, f"{request.label}.png")]
+        self.logger.info("KVM %s", action)
+        try:
+            ret = self.run_cmd(
+                kvm_client.client_command(kvm_command, target, arguments),
+                allow_fail=True,
+            )
+        finally:
+            if output_dir is not None:
+                self.attach_files(output_dir, "kvm_snapshot", self.definition or "lava")
+        return 1 if ret is None else ret
+
     @nottest
     def pattern_test_case(self, test_connection):
         match = test_connection.match
@@ -694,6 +741,8 @@ class TestShellAction(ReportMixin, Action):
                 self.logger.event(" ".join(params))
             elif name == "DEVICECMD":
                 self.signal_device_command(test_connection, params)
+            elif name == "KVM":
+                self.signal_kvm(test_connection, params)
 
             self.signal_director.signal(name, params)
             ret_val = True

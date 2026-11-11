@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# Drives the device's keyboard, mouse and screen through the KVM it is
+# connected to. The dispatcher runs the request on the worker and replies
+# with its return code, which this exits with.
+#
+# Usage:
+#   lava-kvm snapshot [LABEL]       attach a picture of the screen to the job
+#   lava-kvm type TEXT              type text (US layout)
+#   lava-kvm press KEY...           press keys or combinations, e.g. f2 ctrl+c
+#   lava-kvm key-down KEY           hold a key down
+#   lava-kvm key-up KEY             release it
+#   lava-kvm move X Y               move the pointer, in screen pixels
+#   lava-kvm click [BUTTON] [X Y]   click, optionally after moving
+#   lava-kvm double-click [BUTTON] [X Y]
+#   lava-kvm mouse-down [BUTTON]
+#   lava-kvm mouse-up [BUTTON]
+#   lava-kvm scroll NOTCHES         positive scrolls up
+#
+# The exchange uses the test shell's own stdin and stdout, so this only works
+# from the foreground of the test shell. Needs base64.
+
+if [ $# -lt 1 ]; then
+	echo "Usage: lava-kvm ACTION [ARGUMENT...]" >&2
+	exit 1
+fi
+if ! command -v base64 >/dev/null 2>&1; then
+	echo "lava-kvm: base64 is needed to send the request" >&2
+	exit 1
+fi
+
+ACTION="$1"
+shift
+
+# Each argument goes as "a" and its base64, so that spaces, ">" and empty
+# arguments survive the signal.
+ENCODED=""
+for argument in "$@"; do
+	ENCODED="$ENCODED a$(printf '%s' "$argument" | base64 | tr -d '\n')"
+done
+
+echo "<LAVA_SIGNAL_KVM ${ACTION}${ENCODED}>"
+
+while read -r line; do
+	line=$(printf '%s' "$line" | tr -d '\r')
+	case "$line" in
+	"<LAVA_KVM_ACK ${ACTION} "*)
+		line="${line#<LAVA_KVM_ACK ${ACTION} }"
+		exit "${line%>}"
+		;;
+	esac
+done
+
+echo "lava-kvm: connection closed waiting for '${ACTION}'" >&2
+exit 1
