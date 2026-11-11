@@ -332,6 +332,41 @@ class TestRestApi:
             + "jobs/%s/" % self.public_testjob1.id,
         )
 
+    def test_testjob_attachments(self, monkeypatch, tmp_path):
+        (tmp_path / "attachments").mkdir()
+        (tmp_path / "attachments" / "kvm-001-screen.png").write_bytes(b"\x89PNG")
+        (tmp_path / "attachments" / ".kvm-002-screen.png.partial").write_bytes(b"x")
+        monkeypatch.setattr(TestJob, "output_dir", str(tmp_path))
+        url = (
+            reverse("api-root", args=[self.version])
+            + "jobs/%s/attachments/" % self.public_testjob1.id
+        )
+
+        data = self.hit(self.userclient, url)
+        assert data == [  # nosec - unit test support
+            {
+                "name": "kvm-001-screen.png",
+                "size": 4,
+                "url": "http://testserver" + url + "kvm-001-screen.png/",
+            }
+        ]
+
+        response = self.userclient.get(data[0]["url"])
+        assert response.status_code == 200  # nosec - unit test support
+        assert b"".join(response.streaming_content) == b"\x89PNG"  # nosec
+        assert response["Content-Type"] == "application/octet-stream"  # nosec
+
+        response = self.userclient.get(url + "missing.png/")
+        assert response.status_code == 404  # nosec - unit test support
+
+    def test_testjob_attachments_of_a_private_job(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(TestJob, "output_dir", str(tmp_path))
+        response = self.userclient_no_token.get(
+            reverse("api-root", args=[self.version])
+            + "jobs/%s/attachments/" % self.private_testjob1.id
+        )
+        assert response.status_code == 404  # nosec - unit test support
+
     def test_testjob_logs(self, monkeypatch, tmp_path):
         (tmp_path / "output.yaml").write_text(LOG_FILE, encoding="utf-8")
         monkeypatch.setattr(TestJob, "output_dir", str(tmp_path))

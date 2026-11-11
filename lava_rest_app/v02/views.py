@@ -51,6 +51,11 @@ from lava_results_app.utils import (
     testcase_export_fields,
 )
 from lava_scheduler_app import queue_stats
+from lava_scheduler_app.attachments import (
+    DOWNLOAD_CONTENT_TYPE,
+    attachment_path,
+    list_attachments,
+)
 from lava_scheduler_app.dbutils import testjob_submission
 from lava_scheduler_app.environment import DEVICES_JINJA_ENV
 from lava_scheduler_app.logutils import logs_instance
@@ -243,6 +248,36 @@ class TestJobViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = (
             "attachment; filename=job_%d.xml" % self.get_object().id
         )
+        return response
+
+    @action(detail=True, suffix="attachments")
+    def attachments(self, request, **kwargs):
+        job = self.get_object()
+        return Response(
+            [
+                {
+                    **attachment,
+                    "url": request.build_absolute_uri(f"{attachment['name']}/"),
+                }
+                for attachment in list_attachments(job)
+            ]
+        )
+
+    @action(
+        detail=True,
+        suffix="attachment",
+        url_path=r"attachments/(?P<name>[A-Za-z0-9._-]+)",
+    )
+    def attachment(self, request, name=None, **kwargs):
+        job = self.get_object()
+        path = attachment_path(job, name)
+        if path is None:
+            raise NotFound()
+        # Always a download: the API does not show files in the browser.
+        response = FileResponse(
+            path.open("rb"), content_type=DOWNLOAD_CONTENT_TYPE, as_attachment=True
+        )
+        response["X-Content-Type-Options"] = "nosniff"
         return response
 
     @action(detail=True, suffix="logs")
