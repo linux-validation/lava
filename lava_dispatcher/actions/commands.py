@@ -144,13 +144,25 @@ class CommandAction(Action):
         cmd = self.cmd["do"]
         if not isinstance(cmd, list):
             cmd = [cmd]
+        # Files the command leaves here are attached to the job.
+        output_dir = self.mkdtemp()
+        env = {**os.environ, "LAVA_OUTPUT_DIR": output_dir}
+        try:
+            self._run_commands(cmd, secret_name, env)
+        finally:
+            self.attach_files(output_dir, self.parameters["name"])
+        return connection
+
+    def _run_commands(
+        self, cmd: list[str | list[str]], secret_name: str, env: dict[str, str]
+    ) -> None:
         for c in cmd:
             if secret_name:
                 if isinstance(c, str):
                     c = shlex_split(c)
                 # parsed_command returns output, but expects a list
                 out = self.parsed_command(
-                    c, show_output=False, redact_output=True
+                    c, show_output=False, redact_output=True, env=env
                 ).strip()
                 if out:
                     if "\n" in out:
@@ -170,8 +182,7 @@ class CommandAction(Action):
                         secret_name,
                     )
             else:
-                self.run_cmd(c)
-        return connection
+                self.run_cmd(c, env=env)
 
     def cleanup(
         self,

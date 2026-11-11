@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import shutil
 import signal
@@ -20,6 +21,7 @@ from lava_common.constants import DISPATCHER_DOWNLOAD_DIR
 from lava_common.exceptions import InfrastructureError, JobCanceled, LAVABug, LAVAError
 from lava_common.log import ResultDict, YAMLLogger
 from lava_common.yaml import yaml_safe_dump, yaml_safe_load
+from lava_dispatcher.attachments import Attachments
 from lava_dispatcher.device import DeviceDict
 from lava_dispatcher.parser import JobParser
 from lava_dispatcher.worker import get_prefix
@@ -230,6 +232,7 @@ def main() -> int:
         return 1
 
     # By default, that's a failure
+    job = None
     success = False
     error_help = error_msg = error_type = None
     try:
@@ -243,6 +246,7 @@ def main() -> int:
 
         # Parse the definition and create the job object
         job = parse_job_file(options, logger)
+        job.attachments = Attachments(options.job_id, options.url, options.token)
 
         # Add secrets to the environment
         for k, v in job.secrets.iterate():
@@ -285,6 +289,12 @@ def main() -> int:
     else:
         success = True
     finally:
+        # The server takes attachments only until the job is reported
+        # finished, so this is the last chance for any that failed.
+        # A second cancel can interrupt this; the job result still goes out.
+        if job is not None:
+            with contextlib.suppress(LAVAError):
+                job.attachments.retry_failed(logger)
         result_dict: ResultDict = {"definition": "lava", "case": "job"}
         if success:
             result_dict["result"] = "pass"

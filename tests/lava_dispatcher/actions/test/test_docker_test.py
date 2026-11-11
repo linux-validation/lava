@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from lava_common.exceptions import TestError
-
 from lava_dispatcher.actions.test.docker import DockerTestShell
 from lava_dispatcher.actions.test.multinode import MultinodeMixin
 from lava_dispatcher.actions.test.shell import TestShellAction
@@ -342,8 +341,8 @@ def test_signal_device_command(test_shell, mocker):
     test_shell.signal_device_command(connection, ["hard_reset"])
 
     assert run_cmd.mock_calls == [
-        mocker.call("/path/to/reset.sh 0 1 2", allow_fail=True),
-        mocker.call("sleep 5", allow_fail=True),
+        mocker.call("/path/to/reset.sh 0 1 2", allow_fail=True, env=mocker.ANY),
+        mocker.call("sleep 5", allow_fail=True, env=mocker.ANY),
     ]
     connection.sendline.assert_called_once_with(
         "<LAVA_DEVICECMD_ACK hard_reset 0>", delay=mocker.ANY
@@ -410,3 +409,30 @@ def test_docker_test_shell_run_drops_namespace_when_the_test_fails(
         action.run(connection, 0)
 
     assert "docker-test-shell" not in action.data
+
+
+def test_device_command_files_are_attached(test_shell, mocker, tmp_path):
+    test_shell.parameters["device_commands"] = True
+    test_shell.validate()
+    test_shell.definition = "0_smoke"
+    output_dir = tmp_path / "out"
+    mocker.patch.object(test_shell, "mkdtemp", return_value=str(output_dir))
+
+    def write_screenshot(cmd, allow_fail, env):
+        assert env["LAVA_OUTPUT_DIR"] == str(output_dir)
+        (output_dir / "screen.png").write_bytes(b"png")
+        return 0
+
+    output_dir.mkdir()
+    mocker.patch.object(test_shell, "run_cmd", side_effect=write_screenshot)
+    attach = mocker.patch.object(test_shell.job.attachments, "attach")
+
+    test_shell.signal_device_command(MagicMock(), ["power_on"])
+
+    attach.assert_called_once_with(
+        test_shell.logger,
+        output_dir / "screen.png",
+        "power_on",
+        "0_smoke",
+        test_shell.level,
+    )
