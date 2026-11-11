@@ -12,6 +12,7 @@ import time
 import traceback
 import warnings
 from itertools import chain
+from pathlib import Path
 from shlex import split as shlex_split
 from typing import TYPE_CHECKING
 
@@ -1010,6 +1011,17 @@ class Action:
 
     def mkdtemp(self, override: str | None = None) -> str:
         return self.job.mkdtemp(self.name, override=override)
+
+    def attach_files(
+        self, directory: str, prefix: str, definition: str = "lava"
+    ) -> None:
+        """Attach every file a command left in directory to the job, in name
+        order. See lava_dispatcher.attachments."""
+        for path in sorted(Path(directory).iterdir()):
+            if path.is_file():
+                self.job.attachments.attach(
+                    self.logger, path, prefix, definition, self.level
+                )
 
     def _override_action_timeout(self, timeout: dict[str, Any] | None) -> None:
         """

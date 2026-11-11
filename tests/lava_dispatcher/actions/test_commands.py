@@ -7,7 +7,7 @@
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 from unittest.mock import call as mock_call
 
 from lava_common.exceptions import InfrastructureError
@@ -38,6 +38,13 @@ class TestCommands(LavaDispatcherTestCase):
                                 "do": "bash -c 'echo $TEST_CREATE_SECRET'"
                             },
                             "bad_command": {"do": "bash -c 'exit 1'"},
+                            "screenshot": {
+                                "do": "sh -c 'echo a > $LAVA_OUTPUT_DIR/b.png; "
+                                "echo b > $LAVA_OUTPUT_DIR/a.png'"
+                            },
+                            "failing_screenshot": {
+                                "do": "sh -c 'echo a > $LAVA_OUTPUT_DIR/a.png; exit 1'"
+                            },
                         },
                     }
                 }
@@ -58,7 +65,7 @@ class TestCommands(LavaDispatcherTestCase):
     def test_run(self):
         self.do_something()
         self.action.run(None, 600)
-        self.action.run_cmd.assert_called_with("/bin/do")
+        self.action.run_cmd.assert_called_with("/bin/do", env=ANY)
 
     def test_cleanup(self):
         self.do_something()
@@ -80,7 +87,41 @@ class TestCommands(LavaDispatcherTestCase):
     def test_builtin_command_run(self):
         self.hard_reset()
         self.action.run(None, 600)
-        self.action.run_cmd.assert_called_with("/path/to/hard-reset")
+        self.action.run_cmd.assert_called_with("/path/to/hard-reset", env=ANY)
+
+    def run_for_real(self, name):
+        action = CommandAction(self.job)
+        action.parameters = {"name": name}
+        action.validate()
+        self.job.attachments = MagicMock()
+        return action
+
+    def attached(self):
+        return [
+            (call.args[1].name, call.args[2], call.args[3])
+            for call in self.job.attachments.attach.mock_calls
+        ]
+
+    def test_files_left_by_the_command_are_attached(self):
+        action = self.run_for_real("screenshot")
+        action.run(None, 600)
+        # In name order, named after the command, in the "lava" suite.
+        self.assertEqual(
+            [("a.png", "screenshot", "lava"), ("b.png", "screenshot", "lava")],
+            self.attached(),
+        )
+
+    def test_files_are_attached_when_the_command_fails(self):
+        action = self.run_for_real("failing_screenshot")
+        with self.assertRaises(Exception):
+            action.run(None, 600)
+        self.assertEqual([("a.png", "failing_screenshot", "lava")], self.attached())
+
+    def test_nothing_to_attach(self):
+        action = self.run_for_real("do_something")
+        action.run_cmd = MagicMock()
+        action.run(None, 600)
+        self.job.attachments.attach.assert_not_called()
 
     def test_builtin_command_cleanup_is_noop(self):
         self.hard_reset()
@@ -98,7 +139,7 @@ class TestCommands(LavaDispatcherTestCase):
         self.action.validate()
         self.action.run(None, 600)
         self.action.run_cmd.assert_has_calls(
-            (mock_call("something"), mock_call("something-else"))
+            (mock_call("something", env=ANY), mock_call("something-else", env=ANY))
         )
 
     def test_usbg_ms_commands_disable(self):
@@ -118,7 +159,7 @@ class TestCommands(LavaDispatcherTestCase):
         self.assertTrue(self.action.valid)
         self.assertEqual({"do": "laacli usbg-ms off"}, self.action.cmd)
         self.action.run(None, 600)
-        self.action.run_cmd.assert_called_with("laacli usbg-ms off")
+        self.action.run_cmd.assert_called_with("laacli usbg-ms off", env=ANY)
 
     def test_usbg_ms_commands_disable_missing(self):
         self.job.device = PipelineDevice({})
@@ -143,7 +184,7 @@ class TestCommands(LavaDispatcherTestCase):
         self.assertTrue(self.action.valid)
         self.assertEqual({"do": [stop_cmd]}, self.action.cmd)
         self.action.run(None, 600)
-        self.action.run_cmd.assert_called_with(stop_cmd)
+        self.action.run_cmd.assert_called_with(stop_cmd, env=ANY)
 
     def test_stop_test_services_missing(self):
         self.action.parameters = {"name": "stop_test_services"}

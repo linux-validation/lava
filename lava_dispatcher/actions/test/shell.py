@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 from __future__ import annotations
 
+import os
 import re
 import time
 from typing import TYPE_CHECKING
@@ -578,11 +579,18 @@ class TestShellAction(ReportMixin, Action):
         if not isinstance(command, list):
             command = [command]
         self.logger.info("Running device command %r", name)
-        for cmd in command:
-            ret = self.run_cmd(cmd, allow_fail=True)
-            if ret != 0:
-                return 1 if ret is None else ret
-        return 0
+        # Files the command leaves here are attached to the job, as results
+        # of the test definition that asked for the command.
+        output_dir = self.mkdtemp()
+        env = {**os.environ, "LAVA_OUTPUT_DIR": output_dir}
+        try:
+            for cmd in command:
+                ret = self.run_cmd(cmd, allow_fail=True, env=env)
+                if ret != 0:
+                    return 1 if ret is None else ret
+            return 0
+        finally:
+            self.attach_files(output_dir, name, self.definition or "lava")
 
     @nottest
     def pattern_test_case(self, test_connection):

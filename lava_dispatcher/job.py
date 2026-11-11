@@ -20,6 +20,7 @@ from lava_common.exceptions import JobError, LAVABug, LAVAError
 from lava_common.log import YAMLLogger
 from lava_common.version import __version__
 from lava_dispatcher.action import Pipeline
+from lava_dispatcher.attachments import Attachments
 from lava_dispatcher.logical import PipelineContext
 from lava_dispatcher.protocols.multinode import (  # pylint: disable=unused-import
     MultinodeProtocol,
@@ -81,6 +82,8 @@ class Job:
         if param_secrets := parameters.get("secrets"):
             for key, value in param_secrets.items():
                 self.secrets.add(key, value)
+        # lava-run points this at the server once it knows the job's token.
+        self.attachments = Attachments(job_id)
 
     @property
     def context(self) -> dict[str, Any]:

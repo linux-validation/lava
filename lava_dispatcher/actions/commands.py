@@ -114,12 +114,22 @@ class CommandAction(Action):
         cmd = self.cmd["do"]
         if not isinstance(cmd, list):
             cmd = [cmd]
+        # Files the command leaves here are attached to the job.
+        output_dir = self.mkdtemp()
+        env = {**os.environ, "LAVA_OUTPUT_DIR": output_dir}
+        try:
+            self._run_commands(cmd, secret_name, env)
+        finally:
+            self.attach_files(output_dir, self.parameters["name"])
+        return connection
+
+    def _run_commands(self, cmd, secret_name, env):
         for c in cmd:
             if secret_name:
                 if isinstance(c, str):
                     c = shlex_split(c)
                 # parsed_command returns output, but expects a list
-                out = self.parsed_command(c, show_output=False).strip()
+                out = self.parsed_command(c, show_output=False, env=env).strip()
                 if out:
                     self.logger.debug("Creating secret %s", secret_name)
                     # also masks the value in the logs
@@ -127,8 +137,7 @@ class CommandAction(Action):
                     # we add job secrets to env in lava-run, also add newly created ones
                     os.environ[secret_name] = out
             else:
-                self.run_cmd(c)
-        return connection
+                self.run_cmd(c, env=env)
 
     def cleanup(self, connection):
         if not self.ran:
