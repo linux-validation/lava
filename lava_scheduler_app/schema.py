@@ -542,6 +542,7 @@ _device_schema = Schema(
         "fastboot_options": [str],
         "fastboot_via_uboot": bool,
         "device_info": [dict],
+        "kvm": {Required("target"): str},  # the device's KVM client target
         "static_info": [dict],
         "storage_info": [dict],
         "environment": dict,

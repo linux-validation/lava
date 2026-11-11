@@ -239,6 +239,19 @@ into the test shell using
 {% set device_mac = '00:02:F7:00:58:53' %}
 ```
 
+#### kvm_target
+
+For a device whose keyboard, mouse and screen are connected to a KVM, tests
+use [`lava-kvm`](../../user/basic-tutorials/test-definition.md#lava-kvm) to
+drive them, through the worker's KVM client: koidaemon's `koictl`, or another
+named with `kvm_command` in the [dispatcher configuration](./dispatcher.md).
+The client knows the device by its LAVA name. Set `kvm_target` only when the
+client knows it by another name.
+
+```jinja
+{% set kvm_target = 'ventunoq-01' %}
+```
+
 ### Character delays
 
 LAVA supports specifying character delays in the deploy, boot, and test

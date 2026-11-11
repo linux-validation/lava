@@ -45,6 +45,7 @@ def device():
         Optional("fastboot_options"): [str],
         Optional("fastboot_via_uboot"): bool,
         Optional("device_info"): [dict],
+        Optional("kvm"): {Required("target"): str},
         Optional("static_info"): [dict],
         Optional("storage_info"): [dict],
         Optional("environment"): dict,

@@ -265,6 +265,13 @@ commands:
 {% endif %}
 {% endblock commands -%}
 
+{% if kvm_target %}
+{# The device's target in the worker's KVM client, e.g. a koidaemon target,
+   when it is not the device's own name #}
+kvm:
+  target: {{ kvm_target|yaml_quote }}
+{% endif -%}
+
 {% if device_info %}
 {# LXC support for dynamic devices over usb etc. #}
 {# admins need to ensure that the device dictionary sets this as a list of dictionaries, where each dictionary value can contain keys such as 'board_id', 'usb_vendor_id', 'usb_product_id'  #}
