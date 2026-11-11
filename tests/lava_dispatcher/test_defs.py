@@ -145,6 +145,7 @@ class TestDefinitionHandlers(LavaDispatcherTestCase):
             "lava-power-on",
             "lava-install-packages",
             "lava-installed-packages",
+            "lava-kvm",
             "lava-os-build",
             "lava-probe-channel",
             "lava-probe-ip",

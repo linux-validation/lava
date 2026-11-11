@@ -59,6 +59,14 @@
 # be written to the job's temporary directory and deleted when the job ends.
 #ramdump_publish_command: /usr/local/bin/publish-ramdump
 
+# Client for the KVMs of this worker's devices, used by lava-kvm in test
+# shells. The default is koidaemon's koictl, which reaches its daemon at
+# /run/koidaemon/koid.sock. Another client must take koictl's command line:
+# "-t TARGET" and then the action, e.g. "keyboard type -- TEXT" or
+# "snapshot FILE". The target is the device's name, unless its device
+# dictionary sets kvm_target.
+#kvm_command: koictl --socket /run/koidaemon/koid.sock
+
 # Directories to be bind mounted in test actions that run with docker.
 # Must be an array with exactly two/three items:
 # 1st item: the source directory in the host (mandatory)
