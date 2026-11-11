@@ -31,6 +31,11 @@ if TYPE_CHECKING:
     from lava_scheduler_app.models import TestJob
 
 
+# Levels whose message is a dictionary rather than text. Backends that can
+# only index text keep these as strings and parse them back when reading.
+STRUCTURED_LEVELS = ("results", "attachment")
+
+
 def fileno_unsupported() -> NoReturn:
     raise io.UnsupportedOperation("fileno disabled")
 
@@ -275,7 +280,7 @@ class LogsElasticsearch(Logs):
             doc.update(
                 {"dt": datetime.datetime.fromtimestamp(doc["dt"] / 1000.0).isoformat()}
             )
-            if doc["lvl"] == "results":
+            if doc["lvl"] in STRUCTURED_LEVELS:
                 doc.update({"msg": yaml_safe_load(doc["msg"])})
             result.append(doc)
         return result
@@ -316,7 +321,7 @@ class LogsElasticsearch(Logs):
         line: dict[str, Any] = yaml_safe_load(line)[0]
         dt = datetime.datetime.strptime(line["dt"], "%Y-%m-%dT%H:%M:%S.%f")
         line.update({"job_id": job.id, "dt": int(dt.timestamp() * 1000)})
-        if line["lvl"] == "results":
+        if line["lvl"] in STRUCTURED_LEVELS:
             line.update({"msg": str(line["msg"])})
         data = json_dumps(line)
 
