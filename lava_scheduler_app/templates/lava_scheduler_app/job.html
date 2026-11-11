@@ -122,6 +122,26 @@
     .lava-action-on-screen {
       font-weight: bold;
     }
+    .attachment {
+      white-space: normal;
+    }
+    /* A thumbnail as tall as about six log lines, at a fixed height so
+       images loading later do not move the log about. A click expands it. */
+    .attachment img {
+      height: 8.3em;
+      margin-right: 6px;
+      vertical-align: middle;
+      border: 1px solid #ccc;
+      background-color: #000;
+      cursor: zoom-in;
+    }
+    .attachment img.expanded {
+      display: block;
+      height: auto;
+      max-width: 100%;
+      margin: 4px 0;
+      cursor: zoom-out;
+    }
   </style>
 {% endblock %}
 
@@ -267,6 +287,7 @@
       <label class="btn btn-success" id="target_label" for="target"><input type="checkbox" id="target" autocomplete="off">output</label>
       <label class="btn btn-feedback" id="feedback_label" for="feedback"><input type="checkbox" id="feedback" autocomplete="off">feedback</label>
       <label class="btn btn-primary" id="results_label" for="results"><input type="checkbox" id="results" autocomplete="off">results</label>
+      <label class="btn btn-default" id="attachment_label" for="attachment"><input type="checkbox" id="attachment" autocomplete="off">attachments</label>
     </div>
 {% endif %}
 
@@ -382,6 +403,36 @@
 
   const logs_observer = new IntersectionObserver(logs_observer_callback);
 
+  // Files the job attached to itself: images are shown, anything else is a
+  // link. The name is checked again here, as it ends up in a URL.
+  const attachment_base_url = '{% url 'lava.scheduler.job.attachment' job.pk '_' %}'.slice(0, -1);
+  const attachment_name_regexp = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+  const attachment_image_regexp = /\.(png|jpe?g|gif|webp)$/i;
+  function attachment_node(msg) {
+    if (typeof msg !== 'object' || msg === null || !attachment_name_regexp.test(msg['name'])) {
+      return document.createTextNode(JSON.stringify(msg));
+    }
+    const name = msg['name'];
+    const url = attachment_base_url + encodeURIComponent(name);
+    const fragment = document.createDocumentFragment();
+    if (attachment_image_regexp.test(name)) {
+      const image = document.createElement('img');
+      image.setAttribute('src', url);
+      image.setAttribute('alt', name);
+      image.setAttribute('title', 'Click to expand');
+      image.setAttribute('loading', 'lazy');
+      image.addEventListener('click', () => image.classList.toggle('expanded'));
+      fragment.appendChild(image);
+    }
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener');
+    link.textContent = `${name} (${Number(msg['size'])} bytes)`;
+    fragment.appendChild(link);
+    return fragment;
+  }
+
   function render_logs(logs_data) {
     const logs_fragment = document.createDocumentFragment();
     const actions_fragment = document.createDocumentFragment();
@@ -409,6 +460,9 @@
             break;
           case 'results':
             code_node.classList.add('results', 'bg-primary');
+            break;
+          case 'attachment':
+            code_node.classList.add('attachment');
             break;
           case 'error':
           case 'exception':
@@ -444,6 +498,9 @@
               results_node.appendChild(document.createElement('br'));
             }
             code_node.appendChild(results_node);
+            break;
+          case 'attachment':
+            code_node.appendChild(attachment_node(msg));
             break;
           case 'input':
             const kbd_node = document.createElement('kbd');
@@ -523,6 +580,7 @@
         'target': sheet.insertRule('.target { display: block }', 5),
         'results': sheet.insertRule('.results { display: block }', 6),
         'feedback': sheet.insertRule('.feedback { display: block }', 7),
+        'attachment': sheet.insertRule('.attachment { display: block }', 8),
       };
 
       // Handle click events on buttons
