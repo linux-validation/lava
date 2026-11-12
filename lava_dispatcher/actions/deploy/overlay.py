@@ -276,7 +276,9 @@ class CreateOverlay(Action):
             self.logger.debug("Creating %s/secrets", lava_path)
             with open(os.path.join(lava_path, "secrets"), "w") as fout:
                 for key, value in self.job.secrets.iterate():
-                    fout.write(f"{key}={value}\n")
+                    # the DUT sources this file: unquoted spaces or quotes in
+                    # a value would break sourcing
+                    fout.write(f"{key}={shlex.quote(value)}\n")
 
         if "env_dut" in self.job.parameters:
             environment = self.get_namespace_data(
@@ -287,7 +289,7 @@ class CreateOverlay(Action):
                 with open(os.path.join(lava_path, "secrets"), "a") as fout:
                     for key in environment:
                         self.logger.debug("Handling %s", key)
-                        fout.write(f"{key}={environment[key]}\n")
+                        fout.write(f"{key}={shlex.quote(environment[key])}\n")
 
         connection = super().run(connection, max_end_time)
         return connection
