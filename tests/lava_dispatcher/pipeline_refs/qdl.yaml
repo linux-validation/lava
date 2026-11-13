@@ -37,16 +37,9 @@
   summary: boot to EDL mode
   timeout: 300
   pipeline:
-  - class: ConnectDevice
-    name: connect-device
-    level: '2.1'
-    max_retries: 1
-    description: use the configured command to connect serial to the device
-    summary: run connection command
-    timeout: 300
   - class: ResetDevice
     name: reset-device
-    level: '2.2'
+    level: '2.1'
     max_retries: 1
     description: reboot or power-cycle the device
     summary: reboot the device
@@ -54,35 +47,35 @@
     pipeline:
     - class: SendRebootCommands
       name: send-reboot-commands
-      level: 2.2.1
+      level: 2.1.1
       max_retries: 1
       description: Issue a reboot command on the device
       summary: Issue a reboot command on the device
       timeout: 300
   - class: EnterQDL
     name: enter-qdl
-    level: '2.3'
+    level: '2.2'
     max_retries: 1
     description: enter QDL mode
     summary: enter QDL mode
     timeout: 300
   - class: WaitQDLDeviceAction
     name: wait-qdl-device
-    level: '2.4'
+    level: '2.3'
     max_retries: 1
     description: wait for QDL device
     summary: wait for QDL device
     timeout: 300
   - class: FlashQDLAction
     name: flash-qdl
-    level: '2.5'
+    level: '2.4'
     max_retries: 1
     description: use qdl to flash flat build to the board
     summary: use qdl to flash flat build to the board
     timeout: 300
   - class: QDLRamdumpAction
     name: qdl-ramdump
-    level: '2.6'
+    level: '2.5'
     max_retries: 1
     description: capture a ramdump if the board crashed into EDL crashdump mode
     summary: capture qdl ramdump on crash
