@@ -112,3 +112,50 @@ def test_client_command():
         "board-a",
         "snapshot",
     ]
+
+
+@pytest.mark.parametrize(
+    "arguments, client_arguments, image",
+    [
+        (["stick", "disk.img"], ["storage", "insert", "--"], "disk.img"),
+        (
+            ["stick", "disk.img", "writable"],
+            ["storage", "insert", "--writable", "--"],
+            "disk.img",
+        ),
+        (
+            ["cdrom", "/lava-downloads/installer.iso"],
+            ["storage", "insert", "--cdrom", "--"],
+            "installer.iso",
+        ),
+        (["stick", "rootfs.ext4.gz"], ["storage", "insert", "--"], "rootfs.ext4.gz"),
+    ],
+)
+def test_storage_insert(arguments, client_arguments, image):
+    request = parse_request("storage-insert", arguments)
+    assert (request.arguments, request.image) == (client_arguments, image)
+
+
+def test_storage_eject():
+    request = parse_request("storage-eject", [])
+    assert (request.arguments, request.image) == (["storage", "eject"], None)
+
+
+@pytest.mark.parametrize(
+    "action, arguments, message",
+    [
+        ("storage-insert", ["stick"], "takes 2 to 3 arguments"),
+        ("storage-insert", ["floppy", "disk.img"], "must be stick or cdrom"),
+        ("storage-insert", ["stick", "disk.img", "rw"], "Unknown storage option"),
+        ("storage-insert", ["cdrom", "a.iso", "writable"], "cannot be writable"),
+        ("storage-insert", ["stick", "../etc/shadow"], "Invalid image"),
+        ("storage-insert", ["stick", "/etc/shadow"], "Invalid image"),
+        ("storage-insert", ["stick", "/lava-downloads/../x"], "Invalid image"),
+        ("storage-insert", ["stick", "-rf"], "Invalid image"),
+        ("storage-insert", ["stick", ""], "Invalid image"),
+        ("storage-eject", ["now"], "takes 0 arguments"),
+    ],
+)
+def test_invalid_storage_requests(action, arguments, message):
+    with pytest.raises(KVMRequestError, match=message):
+        parse_request(action, arguments)

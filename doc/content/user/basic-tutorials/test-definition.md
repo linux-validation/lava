@@ -183,12 +183,50 @@ lava-kvm double-click [BUTTON] [X Y]
 lava-kvm mouse-down [BUTTON]
 lava-kvm mouse-up [BUTTON]
 lava-kvm scroll NOTCHES             # positive scrolls up
+lava-kvm storage-insert stick|cdrom IMAGE [writable]
+lava-kvm storage-eject
 ```
 
 Each snapshot is attached to the job as `kvm_snapshot-NNN-LABEL.png`, shown in
 the job log where it was taken, with a result of that name in the test
 definition's suite. `lava-kvm` needs `base64` on the device, and must run in
 the foreground of the test shell.
+
+`storage-insert` presents a disk image to the device as a USB stick or a CD
+drive, if the device's KVM can emulate one, replacing whatever it presented
+before. `storage-eject` disconnects it. `IMAGE` is the name of a file the job
+has on the worker: one fetched by a `downloads` deploy, or one a docker test
+shell wrote to `/lava-downloads` (the image can be named that way too, as
+`/lava-downloads/disk.img`). The file is looked for in the test's namespace
+first, then in any other namespace that has exactly one file of that name.
+Only `stick` images can be `writable`.
+
+```yaml
+- deploy:
+    to: downloads
+    namespace: images
+    images:
+      installer:
+        url: https://example.com/installer.iso
+- test:
+    namespace: board
+    definitions:
+    - from: inline
+      name: installer
+      path: inline/installer.yaml
+      repository:
+        metadata:
+          format: Lava-Test Test Definition 1.0
+          name: installer
+        run:
+          steps:
+          - lava-kvm storage-insert cdrom installer.iso
+```
+
+A device that is already running sees a new image as new media in the same
+drive. Whether that drive is a stick or a CD is fixed when the device finds
+the KVM's USB device, normally at boot: to switch between the two, reboot
+the device or have it look for USB devices again.
 
 #### Attaching files
 

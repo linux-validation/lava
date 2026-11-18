@@ -15,7 +15,13 @@ for it, naming the device's KVM target:
   command line.
 * the target is the device's name, unless its device dictionary gives
   another with ``{% set kvm_target = 'board-a' %}``.
- The request comes from the device, so it is
+
+storage-insert presents a disk image the job has on the worker, from a
+"downloads" deploy or written by a docker test shell to /lava-downloads, to
+the device as a USB stick or CD. The test names the file; the dispatcher
+finds it among the job's downloads.
+
+The request comes from the device, so it is
 never given to a shell: arguments are checked here and passed to the client
 as separate arguments, after "--" so that none can be taken as an option.
 """
@@ -36,6 +42,12 @@ BUTTONS = ("left", "right", "middle")
 KEY_PATTERN = re.compile(r"^[A-Za-z0-9+_.,;'=`/\\\[\]-]+$")
 LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 NUMBER_PATTERN = re.compile(r"^-?[0-9]+$")
+# A file in the job's downloads, as named by a test.
+IMAGE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+MAX_IMAGE_NAME = 255
+STORAGE_MODES = ("stick", "cdrom")
+# How a docker test shell sees the job's downloads.
+DOWNLOADS_PREFIX = "/lava-downloads/"
 
 
 class KVMRequestError(Exception):
@@ -49,6 +61,9 @@ class KVMRequest:
     arguments: list[str]
     # For "snapshot": what to call the picture.
     label: str | None = None
+    # For "storage-insert": the file in the job's downloads, whose path
+    # goes last.
+    image: str | None = None
 
 
 def decode_arguments(encoded: list[str]) -> list[str]:
@@ -162,7 +177,38 @@ def parse_request(action: str, arguments: list[str]) -> KVMRequest:
         notches = _number(arguments[0], "notches", allow_negative=True)
         return KVMRequest(action, ["mouse", "scroll", "--", notches])
 
+    if action == "storage-insert":
+        _check_count(action, arguments, 2, 3)
+        mode, image = arguments[0], arguments[1]
+        if mode not in STORAGE_MODES:
+            raise KVMRequestError(f"Storage mode must be stick or cdrom, not {mode!r}")
+        options = ["--cdrom"] if mode == "cdrom" else []
+        if len(arguments) == 3:
+            if arguments[2] != "writable":
+                raise KVMRequestError(f"Unknown storage option {arguments[2]!r}")
+            if mode == "cdrom":
+                raise KVMRequestError("A CD cannot be writable")
+            options.append("--writable")
+        return KVMRequest(
+            action, ["storage", "insert", *options, "--"], image=_image_name(image)
+        )
+
+    if action == "storage-eject":
+        _check_count(action, arguments, 0, 0)
+        return KVMRequest(action, ["storage", "eject"])
+
     raise KVMRequestError(f"Unknown KVM action {action!r}")
+
+
+def _image_name(text: str) -> str:
+    """A file name in the job's downloads: bare, or as a docker test shell
+    sees it under /lava-downloads."""
+    name = text.removeprefix(DOWNLOADS_PREFIX)
+    if not IMAGE_PATTERN.match(name) or len(name) > MAX_IMAGE_NAME:
+        raise KVMRequestError(
+            f"Invalid image {text!r}: name a file in the job's downloads"
+        )
+    return name
 
 
 def client_command(kvm_command: str, target: str, arguments: list[str]) -> list[str]:
