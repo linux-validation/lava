@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pexpect
@@ -622,6 +623,11 @@ class TestShellAction(ReportMixin, Action):
             return 2
 
         arguments = request.arguments
+        if request.image is not None:
+            image = self.find_download(request.image)
+            if image is None:
+                return 1
+            arguments = [*arguments, str(image)]
         output_dir = None
         if request.label is not None:
             # Snapshots are attached to the job, as results of the test
@@ -638,6 +644,38 @@ class TestShellAction(ReportMixin, Action):
             if output_dir is not None:
                 self.attach_files(output_dir, "kvm_snapshot", self.definition or "lava")
         return 1 if ret is None else ret
+
+    def find_download(self, name: str) -> Path | None:
+        """A file the job downloaded, or a docker test shell left in
+        /lava-downloads: this test's namespace first, then any other that
+        has exactly one file of that name."""
+        downloads = Path(self.job.tmp_dir) / "downloads"
+        namespace = self.parameters.get(
+            "downloads-namespace", self.parameters.get("namespace")
+        )
+        found = []
+        if namespace and (downloads / namespace / name).exists():
+            found = [downloads / namespace / name]
+        elif downloads.is_dir():
+            found = sorted(downloads.glob(f"*/{name}"))
+        if not found:
+            self.logger.error("No file %r in the job's downloads", name)
+            return None
+        if len(found) > 1:
+            self.logger.error(
+                "More than one %r in the job's downloads: %s",
+                name,
+                ", ".join(path.parent.name for path in found),
+            )
+            return None
+
+        # A docker test shell can write to the downloads, so a link out of
+        # them must not take the KVM client anywhere else on the worker.
+        image = found[0].resolve()
+        if not image.is_relative_to(downloads.resolve()) or not image.is_file():
+            self.logger.error("%r is not a file in the job's downloads", name)
+            return None
+        return image
 
     @nottest
     def pattern_test_case(self, test_connection):

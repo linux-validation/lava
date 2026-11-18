@@ -555,3 +555,107 @@ def test_kvm_device_without_a_name(kvm_shell, mocker):
     connection.sendline.assert_called_once_with(
         "<LAVA_KVM_ACK press 1>", delay=mocker.ANY
     )
+
+
+@pytest.fixture
+def downloads(kvm_shell, mocker, tmp_path):
+    """The job's downloads directory, with this test in namespace "common"."""
+    mocker.patch.object(
+        type(kvm_shell.job),
+        "tmp_dir",
+        new_callable=mocker.PropertyMock,
+        return_value=str(tmp_path),
+    )
+    kvm_shell.parameters["namespace"] = "common"
+    directory = tmp_path / "downloads"
+    (directory / "common").mkdir(parents=True)
+    return directory
+
+
+def test_kvm_storage_insert(kvm_shell, mocker, downloads):
+    image = downloads / "common" / "installer.iso"
+    image.write_bytes(b"iso")
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    connection = MagicMock()
+
+    kvm_shell.signal_kvm(
+        connection,
+        kvm_signal("storage-insert", "cdrom", "/lava-downloads/installer.iso"),
+    )
+
+    assert run_cmd.call_args.args[0] == [
+        "koictl",
+        "--socket",
+        "/s",
+        "-t",
+        "board-a",
+        "storage",
+        "insert",
+        "--cdrom",
+        "--",
+        str(image),
+    ]
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK storage-insert 0>", delay=mocker.ANY
+    )
+
+
+def test_kvm_storage_image_from_another_namespace(kvm_shell, mocker, downloads):
+    (downloads / "flash").mkdir()
+    image = downloads / "flash" / "disk.img"
+    image.write_bytes(b"img")
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    kvm_shell.signal_kvm(MagicMock(), kvm_signal("storage-insert", "stick", "disk.img"))
+    assert run_cmd.call_args.args[0][-1] == str(image)
+
+
+def test_kvm_storage_image_in_this_namespace_wins(kvm_shell, mocker, downloads):
+    (downloads / "flash").mkdir()
+    (downloads / "flash" / "disk.img").write_bytes(b"other")
+    (downloads / "common" / "disk.img").write_bytes(b"mine")
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    kvm_shell.signal_kvm(MagicMock(), kvm_signal("storage-insert", "stick", "disk.img"))
+    assert run_cmd.call_args.args[0][-1] == str(downloads / "common" / "disk.img")
+
+
+def test_kvm_storage_image_in_two_other_namespaces(kvm_shell, mocker, downloads):
+    for namespace in ("one", "two"):
+        (downloads / namespace).mkdir()
+        (downloads / namespace / "disk.img").write_bytes(b"img")
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd")
+    connection = MagicMock()
+    kvm_shell.signal_kvm(connection, kvm_signal("storage-insert", "stick", "disk.img"))
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK storage-insert 1>", delay=mocker.ANY
+    )
+
+
+def test_kvm_storage_image_missing(kvm_shell, mocker, downloads):
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd")
+    connection = MagicMock()
+    kvm_shell.signal_kvm(connection, kvm_signal("storage-insert", "stick", "disk.img"))
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK storage-insert 1>", delay=mocker.ANY
+    )
+
+
+def test_kvm_storage_link_out_of_the_downloads(kvm_shell, mocker, downloads, tmp_path):
+    # A docker test shell can write to /lava-downloads, so could plant this.
+    secret = tmp_path / "secret"
+    secret.write_text("worker file")
+    (downloads / "common" / "disk.img").symlink_to(secret)
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd")
+    connection = MagicMock()
+    kvm_shell.signal_kvm(connection, kvm_signal("storage-insert", "stick", "disk.img"))
+    run_cmd.assert_not_called()
+    connection.sendline.assert_called_once_with(
+        "<LAVA_KVM_ACK storage-insert 1>", delay=mocker.ANY
+    )
+
+
+def test_kvm_storage_eject(kvm_shell, mocker):
+    run_cmd = mocker.patch.object(kvm_shell, "run_cmd", return_value=0)
+    kvm_shell.signal_kvm(MagicMock(), kvm_signal("storage-eject"))
+    assert run_cmd.call_args.args[0][-2:] == ["storage", "eject"]

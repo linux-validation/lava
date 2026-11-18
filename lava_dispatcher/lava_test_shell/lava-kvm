@@ -16,6 +16,10 @@
 #   lava-kvm mouse-down [BUTTON]
 #   lava-kvm mouse-up [BUTTON]
 #   lava-kvm scroll NOTCHES         positive scrolls up
+#   lava-kvm storage-insert stick|cdrom IMAGE [writable]
+#                                   present a file from the job's downloads
+#                                   to the device as a USB stick or CD
+#   lava-kvm storage-eject          disconnect it
 #
 # The exchange uses the test shell's own stdin and stdout, so this only works
 # from the foreground of the test shell. Needs base64.
