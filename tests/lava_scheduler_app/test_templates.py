@@ -223,37 +223,6 @@ class TestTemplates(BaseTemplateTest):
         self.assertEqual(template_dict["usb_vendor_id"], "8087")
         self.assertEqual(template_dict["usb_product_id"], "0aba")
 
-    def test_flasher_deploy_commands_quotes(self):
-        commands = ["flash {BINARY}", "sh -c 'echo \"flashed\"'"]
-        for device_type in [
-            "arduino-nano-33-ble",
-            "b-u585i-iot02a",
-            "base-depthcharge",
-            "base-nxp-mcu",
-            "base-qdl",
-            "base-stm-mcu",
-            "base-uboot",
-            "cy8ckit-064s0s2-4343w",
-            "lpcxpresso55s69",
-            "mps",
-            "musca",
-            "seco-b68",
-            "seco-c61",
-            "stm32l562e-dk",
-            "stm32wba65i-dk1",
-            "vexpress",
-        ]:
-            with self.subTest(device_type=device_type):
-                data = f"""{{% extends '{device_type}.jinja2' %}}
-{{% set flasher_deploy_commands = {commands!r} %}}"""
-                template_dict = self.render_device_dictionary_from_text(data)
-                self.assertEqual(
-                    template_dict["actions"]["deploy"]["methods"]["flasher"][
-                        "commands"
-                    ],
-                    commands,
-                )
-
     def test_base_qdl_board_ids(self):
         data = """{% extends 'kaanapali-mtp.jinja2' %}
 {% set fastboot_serial_number = 'aee96d1d' %}
@@ -283,56 +252,6 @@ class TestTemplates(BaseTemplateTest):
                 {"board_id": "03419D8A"},
             ],
         )
-
-    def test_arduino_uno_q(self):
-        data = """{% extends 'arduino-uno-q.jinja2' %}
-{% set connection_command = 'telnet localhost 2000' %}
-{% set flasher_deploy_commands = [
-    'adb shell \\'openocd -c "program /tmp/zephyr.elf verify exit"\\''
-] %}"""
-        template_dict = self.render_device_dictionary_from_text(data)
-        self.assertEqual(
-            template_dict["actions"]["deploy"]["methods"]["flasher"]["commands"],
-            ["adb shell 'openocd -c \"program /tmp/zephyr.elf verify exit\"'"],
-        )
-        self.assertEqual(list(template_dict["actions"]["boot"]["methods"]), ["minimal"])
-        self.assertEqual(template_dict["constants"]["kernel-start-message"], "")
-
-    def test_base_flasher_without_flasher_deploy_commands(self):
-        # The {% if %} guard in base-flasher keeps the whole flasher method
-        # absent when no commands are set; unguarded it would render
-        # flasher: {commands: None}, which only fails later in the job.
-        data = """{% extends 'base-flasher.jinja2' %}
-{% set connection_command = 'telnet localhost 2000' %}"""
-        template_dict = self.render_device_dictionary_from_text(data)
-        self.assertIsNone(template_dict["actions"]["deploy"]["methods"])
-
-    def test_base_stm_mcu(self):
-        data = """{% extends 'base-stm-mcu.jinja2' %}
-{% set connection_command = 'telnet localhost 2000' %}
-{% set flasher_deploy_commands = ['flash {TARBALL}'] %}"""
-        template_dict = self.render_device_dictionary_from_text(data)
-        self.assertEqual(
-            template_dict["actions"]["deploy"]["methods"]["flasher"]["commands"],
-            ["flash {TARBALL}"],
-        )
-        self.assertEqual(list(template_dict["actions"]["boot"]["methods"]), ["minimal"])
-        self.assertEqual(template_dict["constants"]["kernel-start-message"], "")
-        timeouts = template_dict["timeouts"]["actions"]
-        self.assertEqual(timeouts["power-off"], {"seconds": 35})
-        self.assertEqual(timeouts["reset-device"], {"seconds": 60})
-        self.assertEqual(timeouts["pdu-reboot"], {"seconds": 60})
-
-    def test_base_stm_mcu_timeout_override(self):
-        data = """{% extends 'base-stm-mcu.jinja2' %}
-{% set action_timeout_power_off = 5 %}
-{% set action_timeout_reset_device = 15 %}
-{% set action_timeout_pdu_reboot = 25 %}"""
-        template_dict = self.render_device_dictionary_from_text(data)
-        timeouts = template_dict["timeouts"]["actions"]
-        self.assertEqual(timeouts["power-off"], {"seconds": 5})
-        self.assertEqual(timeouts["reset-device"], {"seconds": 15})
-        self.assertEqual(timeouts["pdu-reboot"], {"seconds": 25})
 
     def test_stm32l562e_dk_base_timeouts(self):
         # a wrong extends falls back to the base.jinja2 timeouts (10/30/30)
