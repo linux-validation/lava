@@ -43,7 +43,7 @@ class Attachment:
     path: Path
     name: str
     definition: str
-    level: str
+    level: str | None
 
 
 def clean_name(text: str) -> str:
@@ -89,7 +89,7 @@ class Attachments:
         path: Path,
         prefix: str,
         definition: str,
-        level: str,
+        level: str | None,
     ) -> str | None:
         """Attach a file to the job, and return its name if it was uploaded."""
         self.count += 1

@@ -365,7 +365,7 @@ class FinalizeAction(Action):
         if self.before_power_off():
             # A ramdump capture runs under a window of its own and may well
             # have outlasted this action's; the power-off still has to happen.
-            if max_end_time <= time.monotonic():
+            if max_end_time is not None and max_end_time <= time.monotonic():
                 max_end_time = time.monotonic() + self.timeout.duration
         try:
             connection = super().run(connection, max_end_time)

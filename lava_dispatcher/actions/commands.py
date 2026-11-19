@@ -16,6 +16,8 @@ from lava_common.schemas.command import CREATE_SECRET_NAME
 from lava_dispatcher.action import Action
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from lava_dispatcher.job import Job
     from lava_dispatcher.shell import ShellSession
 
@@ -154,7 +156,7 @@ class CommandAction(Action):
         return connection
 
     def _run_commands(
-        self, cmd: list[str | list[str]], secret_name: str, env: dict[str, str]
+        self, cmd: Sequence[str | list[str]], secret_name: str, env: dict[str, str]
     ) -> None:
         for c in cmd:
             if secret_name:
