@@ -143,6 +143,16 @@ def test_mutating_function_views_have_method_guard():
     assert not violations, f"state-changing GET-able views: {violations}"
 
 
+# REST actions whose name matches MUTATING_NAME but whose GET only reads.
+# The write still goes through POST, which needs the CSRF token, so a GET
+# here is not a CWE-352 vector. Keyed by module so that an action of the
+# same name on another viewset is still checked.
+READ_ONLY_GET_ACTIONS = {
+    # GET returns the job's annotation, POST updates it
+    "lava_rest_app.v03.views.TestJobViewSet.annotate",
+}
+
+
 def test_mutating_rest_actions_are_post_only():
     violations = []
     seen = set()
@@ -157,6 +167,9 @@ def test_mutating_rest_actions_are_post_only():
             method = getattr(view_cls, method_name, None)
             mapping = getattr(method, "mapping", None)
             if mapping is None or not MUTATING_NAME.search(method.__name__):
+                continue
+            qualname = f"{view_cls.__module__}.{view_cls.__name__}.{method.__name__}"
+            if qualname in READ_ONLY_GET_ACTIONS:
                 continue
             if "get" in mapping or "head" in mapping:
                 violations.append(f"{view_cls.__name__}.{method.__name__}")
