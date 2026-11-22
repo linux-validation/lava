@@ -25,7 +25,7 @@ jobs:
         component: [dispatcher, server]
         distro: [debian]
         arch: [amd64]
-        version: [12, 13]
+        version: [13, 14]
     uses: ./.github/workflows/generic-lava-test-job.yml
     with:
       component: ${{ matrix.component }}
